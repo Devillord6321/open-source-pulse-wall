@@ -2,20 +2,27 @@
 
 const fs = require('fs');
 const path = require('path');
+const { loadEnvFile } = require('./load-env');
+
+loadEnvFile(path.resolve(__dirname, '..'));
 const {
   fetchGithubState,
-  buildContributorState
+  buildContributorState,
+  resolveGithubRepository
 } = require('./state-builder');
 
 const ROOT = path.resolve(__dirname, '..');
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const DIST_DIR = path.join(ROOT, 'dist');
-const GITHUB_REPOSITORY = String(process.env.GITHUB_REPOSITORY || '').trim();
 const GITHUB_TOKEN = String(process.env.GITHUB_TOKEN || '').trim();
 
-function assertBuildConfig() {
-  if (!GITHUB_REPOSITORY) {
-    throw new Error('GITHUB_REPOSITORY is required for the static Pages build.');
+function assertBuildConfig(repository) {
+  if (!repository) {
+    throw new Error(
+      'Could not resolve GitHub repository. Set GITHUB_REPOSITORY, add data/github-sync.json with ' +
+      '"repository": "owner/repo", set package.json#repository, or build from a git clone whose ' +
+      'origin points at github.com.'
+    );
   }
 }
 
@@ -50,10 +57,11 @@ function markStaticIndex() {
 }
 
 async function buildStaticSite() {
-  assertBuildConfig();
+  const repository = resolveGithubRepository(ROOT);
+  assertBuildConfig(repository);
 
   const githubState = await fetchGithubState({
-    repository: GITHUB_REPOSITORY,
+    repository,
     token: GITHUB_TOKEN
   });
   const payload = buildContributorState({ githubState });

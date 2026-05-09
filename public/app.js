@@ -3,6 +3,14 @@ const VISIBLE_FEED_ITEMS = 5;
 const WALL_PREVIEW_LIMIT = 10;
 const WALL_PAGE_SIZE = 20;
 
+const GRAPH_ROW_HEIGHT = 56;
+const GRAPH_LANE_WIDTH = 22;
+const GRAPH_NODE_RADIUS = 6;
+const GRAPH_PADDING_TOP = 16;
+const GRAPH_PADDING_LEFT = 18;
+const GRAPH_PALETTE = ['#3b6064', '#a36a3b', '#5b8a3a', '#8a3b6a', '#3b6a8a', '#6a8a3b', '#8a5b3b'];
+const REFRESH_LABEL_DEFAULT = '立即拉取';
+
 const state = {
   knownHandles: new Set(),
   knownGithubEvents: new Set(),
@@ -13,7 +21,11 @@ const state = {
   activityReturnFocus: null,
   wallContributors: [],
   wallExpanded: false,
-  wallVisibleCount: WALL_PREVIEW_LIMIT
+  wallVisibleCount: WALL_PREVIEW_LIMIT,
+  refreshing: false,
+  refreshCooldownTimer: null,
+  knownCommitShas: new Set(),
+  bootstrappedHistory: false
 };
 
 const AVATARS = Array.from({ length: 10 }, (_, index) => {
@@ -59,7 +71,13 @@ const elements = {
   wallSearch: $('#wallSearch'),
   wallFilterStatus: $('#wallFilterStatus'),
   clearWallSearch: $('#clearWallSearch'),
-  loadMoreWall: $('#loadMoreWall')
+  loadMoreWall: $('#loadMoreWall'),
+  gitGraph: $('#gitGraph'),
+  historySummary: $('#historySummary'),
+  historyCount: $('#historyCount'),
+  refreshHistory: $('#refreshHistory'),
+  refreshHistoryLabel: $('#refreshHistoryLabel'),
+  openHistoryRepo: $('#openHistoryRepo')
 };
 
 const formFields = {
@@ -88,6 +106,20 @@ function formatTime(iso) {
     hour: '2-digit',
     minute: '2-digit'
   });
+}
+
+function formatRelativeTime(iso) {
+  if (!iso) return '';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const diff = Date.now() - date.getTime();
+  if (diff < 60_000) return '刚刚';
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`;
+  if (diff < 30 * 86_400_000) return `${Math.floor(diff / 86_400_000)} 天前`;
+
+  return date.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
 }
 
 function toast(message) {
@@ -153,7 +185,9 @@ git clone ${cloneUrl}
 git checkout -b feat/your-name
 
 # 3. 添加你的个人信息
-npm run add
+cp data/profiles/_template.json data/profiles/your-github-id.json
+# 编辑该 JSON；也可用本页上方表单生成内容后写入同名文件
+npm run validate
 
 # 4. 提交并推送
 git add .
@@ -432,11 +466,332 @@ function syncGithubEvents(payload) {
   });
 }
 
+function computeGitGraph(commits) {
+  const lanes = [];
+  let maxLanes = 0;
+  const indexBySha = new Map();
+  commits.forEach((commit, index) => indexBySha.set(commit.sha, index));
+
+  function claimLane(sha, preferLane) {
+    if (preferLane !== undefined && preferLane >= 0 && (lanes[preferLane] === null || lanes[preferLane] === undefined)) {
+      lanes[preferLane] = sha;
+      return preferLane;
+    }
+    let slot = lanes.findIndex((value) => value === null || value === undefined);
+    if (slot === -1) {
+      slot = lanes.length;
+      lanes.push(sha);
+    } else {
+      lanes[slot] = sha;
+    }
+    return slot;
+  }
+
+  const rows = commits.map((commit) => {
+    let currentLane = lanes.findIndex((value) => value === commit.sha);
+    if (currentLane === -1) {
+      currentLane = claimLane(commit.sha);
+    }
+
+    lanes[currentLane] = null;
+
+    const parentLinks = [];
+    commit.parents.forEach((parentSha, parentOrder) => {
+      const parentInWindow = indexBySha.has(parentSha);
+      if (!parentInWindow) {
+        parentLinks.push({ sha: parentSha, lane: -1, parentRow: -1, outOfWindow: true });
+        return;
+      }
+
+      let parentLane = lanes.findIndex((value) => value === parentSha);
+      if (parentLane === -1) {
+        parentLane = claimLane(parentSha, parentOrder === 0 ? currentLane : -1);
+      }
+
+      parentLinks.push({
+        sha: parentSha,
+        lane: parentLane,
+        parentRow: indexBySha.get(parentSha),
+        outOfWindow: false
+      });
+    });
+
+    while (lanes.length > 0 && lanes[lanes.length - 1] === null) {
+      lanes.pop();
+    }
+
+    maxLanes = Math.max(
+      maxLanes,
+      currentLane + 1,
+      lanes.length,
+      ...parentLinks.map((link) => link.lane + 1)
+    );
+
+    return { lane: currentLane, parentLinks };
+  });
+
+  return { rows, maxLanes };
+}
+
+function laneCenterX(lane) {
+  return GRAPH_PADDING_LEFT + lane * GRAPH_LANE_WIDTH + GRAPH_NODE_RADIUS;
+}
+
+function rowCenterY(rowIndex) {
+  return GRAPH_PADDING_TOP + rowIndex * GRAPH_ROW_HEIGHT + GRAPH_ROW_HEIGHT / 2;
+}
+
+function laneColor(lane) {
+  return GRAPH_PALETTE[lane % GRAPH_PALETTE.length];
+}
+
+function gitGraphSvg(rows, commits, maxLanes) {
+  const width = GRAPH_PADDING_LEFT * 2 + Math.max(maxLanes, 1) * GRAPH_LANE_WIDTH;
+  const height = GRAPH_PADDING_TOP * 2 + commits.length * GRAPH_ROW_HEIGHT;
+  const connectors = [];
+  const nodes = [];
+
+  rows.forEach((row, rowIndex) => {
+    const x = laneCenterX(row.lane);
+    const y = rowCenterY(rowIndex);
+    const commit = commits[rowIndex];
+
+    row.parentLinks.forEach((link) => {
+      const color = laneColor(link.outOfWindow ? row.lane : link.lane);
+
+      if (link.outOfWindow) {
+        const tailY = height - GRAPH_PADDING_TOP / 2;
+        connectors.push(
+          `<path class="graph-line graph-line-fade" stroke="${color}" d="M ${x} ${y} L ${x} ${tailY}" />`
+        );
+        return;
+      }
+
+      const px = laneCenterX(link.lane);
+      const py = rowCenterY(link.parentRow);
+
+      if (px === x) {
+        connectors.push(
+          `<path class="graph-line" stroke="${color}" d="M ${x} ${y} L ${px} ${py}" />`
+        );
+        return;
+      }
+
+      const bendY = y + GRAPH_ROW_HEIGHT * 0.55;
+      connectors.push(
+        `<path class="graph-line" stroke="${color}" d="M ${x} ${y} C ${x} ${bendY}, ${px} ${bendY}, ${px} ${py}" />`
+      );
+    });
+
+    const color = laneColor(row.lane);
+    const isMerge = commit.parents.length > 1;
+    if (isMerge) {
+      const size = GRAPH_NODE_RADIUS + 1.4;
+      nodes.push(
+        `<rect class="graph-node graph-node-merge" stroke="${color}" x="${x - size}" y="${y - size}" width="${size * 2}" height="${size * 2}" transform="rotate(45 ${x} ${y})" />`
+      );
+    } else {
+      nodes.push(
+        `<circle class="graph-node" stroke="${color}" cx="${x}" cy="${y}" r="${GRAPH_NODE_RADIUS}" />`
+      );
+    }
+  });
+
+  return `
+    <svg class="git-graph-canvas" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="Git 提交图">
+      ${connectors.join('')}
+      ${nodes.join('')}
+    </svg>
+  `;
+}
+
+function commitListMarkup(rows, commits) {
+  return commits
+    .map((commit, rowIndex) => {
+      const top = GRAPH_PADDING_TOP + rowIndex * GRAPH_ROW_HEIGHT;
+      const isMerge = commit.parents.length > 1;
+      const message = htmlEscape(commit.message || '(no commit message)');
+      const author = htmlEscape(commit.author || 'unknown');
+      const shortSha = htmlEscape(commit.shortSha || commit.sha.slice(0, 7));
+      const relative = htmlEscape(formatRelativeTime(commit.time) || '未知时间');
+      const exact = htmlEscape(commit.time || '');
+      const avatarMarkup = commit.avatarUrl
+        ? `<img src="${htmlEscape(commit.avatarUrl)}" alt="" loading="lazy" />`
+        : `<span class="avatar-fallback">${htmlEscape((commit.author || '?').slice(0, 1).toUpperCase())}</span>`;
+      const link = commit.htmlUrl || '#';
+      const target = commit.htmlUrl ? ' target="_blank" rel="noreferrer"' : '';
+      const tag = isMerge ? '<span class="commit-tag">merge</span>' : '';
+
+      return `
+        <li class="git-commit-row" style="top: ${top}px; height: ${GRAPH_ROW_HEIGHT}px">
+          <a class="git-commit-link" href="${htmlEscape(link)}"${target}>
+            <span class="git-commit-avatar">${avatarMarkup}</span>
+            <span class="git-commit-body">
+              <span class="git-commit-message">${message}${tag}</span>
+              <span class="git-commit-meta">
+                <span class="commit-author">${author}</span>
+                <span class="commit-sep">·</span>
+                <time datetime="${exact}">${relative}</time>
+                <span class="commit-sep">·</span>
+                <span class="commit-sha">${shortSha}</span>
+              </span>
+            </span>
+          </a>
+        </li>
+      `;
+    })
+    .join('');
+}
+
+function updateHistorySection(payload) {
+  if (!elements.gitGraph) return;
+
+  const github = payload.github || {};
+  const commits = Array.isArray(github.commits) ? github.commits : [];
+
+  if (elements.openHistoryRepo) {
+    if (github.htmlUrl) {
+      elements.openHistoryRepo.hidden = false;
+      elements.openHistoryRepo.href = `${github.htmlUrl}/commits`;
+    } else {
+      elements.openHistoryRepo.hidden = true;
+    }
+  }
+
+  if (elements.refreshHistory) {
+    elements.refreshHistory.hidden = state.dataMode === 'static';
+  }
+
+  if (!github.configured) {
+    elements.gitGraph.innerHTML = '<div class="git-graph-empty">尚未连接 GitHub。配置后会显示提交图。</div>';
+    if (elements.historySummary) elements.historySummary.textContent = github.message || '等待 GitHub 同步配置';
+    if (elements.historyCount) elements.historyCount.textContent = '--';
+    return;
+  }
+
+  if (!commits.length) {
+    elements.gitGraph.innerHTML = '<div class="git-graph-empty">还没有可展示的提交。</div>';
+    if (elements.historySummary) {
+      elements.historySummary.textContent = github.ok
+        ? `已同步 ${github.repository}，但暂无提交记录`
+        : (github.message || 'GitHub 同步失败');
+    }
+    if (elements.historyCount) elements.historyCount.textContent = '0';
+    return;
+  }
+
+  const { rows, maxLanes } = computeGitGraph(commits);
+  const totalHeight = GRAPH_PADDING_TOP * 2 + commits.length * GRAPH_ROW_HEIGHT;
+
+  elements.gitGraph.innerHTML = `
+    ${gitGraphSvg(rows, commits, maxLanes)}
+    <ol class="git-commit-list" style="height: ${totalHeight}px">
+      ${commitListMarkup(rows, commits)}
+    </ol>
+  `;
+
+  if (elements.historySummary) {
+    elements.historySummary.textContent = github.ok
+      ? `${github.repository} · 最新 ${formatRelativeTime(github.latestCommitAt) || '刚刚'}`
+      : (github.message || 'GitHub 同步失败');
+  }
+  if (elements.historyCount) elements.historyCount.textContent = String(commits.length);
+
+  detectNewCommits(commits, payload.generatedAt);
+}
+
+function detectNewCommits(commits, generatedAt) {
+  if (!state.bootstrappedHistory) {
+    state.knownCommitShas = new Set(commits.map((commit) => commit.sha));
+    state.bootstrappedHistory = true;
+    return;
+  }
+
+  const fresh = commits.filter((commit) => commit.sha && !state.knownCommitShas.has(commit.sha));
+  fresh.forEach((commit) => state.knownCommitShas.add(commit.sha));
+
+  if (fresh.length) {
+    const summary = fresh.length === 1
+      ? `新增提交 ${fresh[0].author}: ${fresh[0].message}`
+      : `新增 ${fresh.length} 个提交`;
+    addFeed(summary, generatedAt);
+  }
+}
+
+function setRefreshButtonState(label, disabled) {
+  if (!elements.refreshHistory) return;
+  elements.refreshHistory.disabled = disabled;
+  elements.refreshHistory.classList.toggle('is-busy', disabled);
+  if (elements.refreshHistoryLabel) elements.refreshHistoryLabel.textContent = label;
+}
+
+function startRefreshCooldown(seconds) {
+  if (state.refreshCooldownTimer) {
+    window.clearInterval(state.refreshCooldownTimer);
+    state.refreshCooldownTimer = null;
+  }
+
+  let remaining = Math.max(1, Math.floor(seconds));
+  setRefreshButtonState(`${remaining}s 后可再拉取`, true);
+  state.refreshCooldownTimer = window.setInterval(() => {
+    remaining -= 1;
+    if (remaining <= 0) {
+      window.clearInterval(state.refreshCooldownTimer);
+      state.refreshCooldownTimer = null;
+      setRefreshButtonState(REFRESH_LABEL_DEFAULT, false);
+      return;
+    }
+    setRefreshButtonState(`${remaining}s 后可再拉取`, true);
+  }, 1000);
+}
+
+async function manuallyRefreshHistory() {
+  if (state.refreshing || state.dataMode === 'static') return;
+
+  state.refreshing = true;
+  setRefreshButtonState('正在拉取…', true);
+
+  try {
+    const response = await fetch('api/refresh', {
+      method: 'POST',
+      headers: { 'Accept': 'application/json' }
+    });
+
+    if (response.status === 429) {
+      const data = await response.json().catch(() => ({}));
+      const retrySeconds = Math.max(1, Math.ceil((data.retryInMs || 5000) / 1000));
+      startRefreshCooldown(retrySeconds);
+      toast(data.message || '刷新太频繁，稍后再试');
+      return;
+    }
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    toast(data.message || '已从 GitHub 拉取最新数据');
+    setRefreshButtonState(REFRESH_LABEL_DEFAULT, false);
+  } catch (error) {
+    toast(`拉取失败: ${error.message || '未知错误'}`);
+    setRefreshButtonState(REFRESH_LABEL_DEFAULT, false);
+  } finally {
+    state.refreshing = false;
+  }
+}
+
+function bindHistoryControls() {
+  if (elements.refreshHistory) {
+    elements.refreshHistory.addEventListener('click', manuallyRefreshHistory);
+  }
+}
+
 function applyState(payload) {
   updateGithubSync(payload.github);
   updateStats(payload);
   updateValidation(payload);
   updateWall(payload);
+  updateHistorySection(payload);
   syncGithubEvents(payload);
   detectNewContributors(payload);
 
@@ -731,6 +1086,7 @@ function bindBuilder() {
 bindBuilder();
 bindActivityPanel();
 bindWallControls();
+bindHistoryControls();
 renderFeed();
 
 fetchState()

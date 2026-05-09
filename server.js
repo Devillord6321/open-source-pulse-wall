@@ -3,19 +3,25 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { loadEnvFile } = require('./scripts/load-env');
+
+loadEnvFile(__dirname);
 const {
   buildUnconfiguredGithubState,
   fetchGithubState,
   computeProfilesFingerprint,
-  buildContributorState
+  buildContributorState,
+  resolveGithubRepository
 } = require('./scripts/state-builder');
 
 const PORT = Number(process.env.PORT || 3008);
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const POLL_INTERVAL_MS = 700;
-const GITHUB_SYNC_INTERVAL_MS = 60000;
-const GITHUB_REPOSITORY = String(process.env.GITHUB_REPOSITORY || '').trim();
+// Treat GitHub remote as the backend: poll every 30s so freshly merged PRs appear quickly.
+// 30s * 3 requests = 360 req/h, well within the 5000 req/h authenticated GitHub API budget.
+const GITHUB_SYNC_INTERVAL_MS = Number(process.env.GITHUB_SYNC_INTERVAL_MS || 30000);
+const MANUAL_REFRESH_COOLDOWN_MS = 5000;
 const GITHUB_TOKEN = String(process.env.GITHUB_TOKEN || '').trim();
 
 const clients = new Set();
@@ -23,31 +29,58 @@ let lastGoodContributors = [];
 let lastFingerprint = '';
 let githubState = buildUnconfiguredGithubState();
 let currentState = buildState();
+let lastManualRefreshAt = 0;
+let inFlightRefresh = null;
 
 async function refreshGithubSync() {
-  try {
-    githubState = await fetchGithubState({
-      repository: GITHUB_REPOSITORY,
-      token: GITHUB_TOKEN
-    });
-  } catch (error) {
-    githubState = {
-      ...githubState,
-      configured: Boolean(GITHUB_REPOSITORY),
-      ok: false,
-      repository: GITHUB_REPOSITORY,
-      events: [],
-      message: error.message
-    };
-  }
+  if (inFlightRefresh) return inFlightRefresh;
 
-  currentState = buildState();
-  broadcast('state', currentState);
-  broadcast('pulse', {
-    type: githubState.ok ? 'success' : 'error',
-    message: githubState.message,
-    generatedAt: currentState.generatedAt
-  });
+  inFlightRefresh = (async () => {
+    const repository = resolveGithubRepository(ROOT);
+
+    if (!repository) {
+      githubState = buildUnconfiguredGithubState();
+      currentState = buildState();
+      broadcast('state', currentState);
+      broadcast('pulse', {
+        type: githubState.ok ? 'success' : 'error',
+        message: githubState.message,
+        generatedAt: currentState.generatedAt
+      });
+      return;
+    }
+
+    try {
+      githubState = await fetchGithubState({
+        repository,
+        token: GITHUB_TOKEN
+      });
+    } catch (error) {
+      githubState = {
+        ...githubState,
+        configured: true,
+        ok: false,
+        repository,
+        events: [],
+        commits: githubState.commits || [],
+        message: error.message
+      };
+    }
+
+    currentState = buildState();
+    broadcast('state', currentState);
+    broadcast('pulse', {
+      type: githubState.ok ? 'success' : 'error',
+      message: githubState.message,
+      generatedAt: currentState.generatedAt
+    });
+  })();
+
+  try {
+    await inFlightRefresh;
+  } finally {
+    inFlightRefresh = null;
+  }
 }
 
 function buildState() {
@@ -111,6 +144,40 @@ function handleRequest(req, res) {
       'Cache-Control': 'no-store'
     });
     res.end(JSON.stringify(currentState, null, 2));
+    return;
+  }
+
+  if (url.pathname === '/api/refresh' && req.method === 'POST') {
+    const now = Date.now();
+    const sinceLast = now - lastManualRefreshAt;
+
+    if (sinceLast < MANUAL_REFRESH_COOLDOWN_MS) {
+      res.writeHead(429, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Retry-After': Math.ceil((MANUAL_REFRESH_COOLDOWN_MS - sinceLast) / 1000)
+      });
+      res.end(JSON.stringify({
+        ok: false,
+        message: '刷新太频繁，稍后再试',
+        retryInMs: MANUAL_REFRESH_COOLDOWN_MS - sinceLast
+      }));
+      return;
+    }
+
+    lastManualRefreshAt = now;
+    refreshGithubSync()
+      .then(() => {
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({
+          ok: true,
+          message: '已从 GitHub 拉取最新数据',
+          generatedAt: currentState.generatedAt
+        }));
+      })
+      .catch((error) => {
+        res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, message: error.message }));
+      });
     return;
   }
 
