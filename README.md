@@ -58,14 +58,14 @@ git push -u origin main
 先在 GitHub 把老师的仓库 Fork 到自己账号下，然后 Clone 自己的 Fork：
 
 ```bash
-git clone https://github.com/YOUR_NAME/open-source-pulse-wall.git
+git clone https://github.com/your-github-id/open-source-pulse-wall.git
 cd open-source-pulse-wall
 ```
 
 把老师的仓库设为 upstream，方便后续同步：
 
 ```bash
-git remote add upstream https://github.com/TEACHER_NAME/open-source-pulse-wall.git
+git remote add upstream https://github.com/nanzhi84/open-source-pulse-wall.git
 ```
 
 ### 第二步：提交自己的 profile
