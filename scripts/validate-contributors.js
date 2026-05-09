@@ -40,6 +40,18 @@ function validateGithubHandle(value) {
   return null;
 }
 
+function isHttpUrl(value) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return true;
+
+  try {
+    const url = new URL(trimmed);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 function requiredString(profile, key, label, errors, filename, maxLength = 80) {
   const value = profile[key];
   if (typeof value !== 'string' || value.trim().length === 0) {
@@ -156,8 +168,8 @@ function validateProfile(profile, filename) {
   if (profile.homepage !== undefined) {
     if (typeof profile.homepage !== 'string') {
       errors.push(`${filename}: homepage 必须是字符串`);
-    } else if (profile.homepage && !/^https?:\/\//.test(profile.homepage)) {
-      warnings.push(`${filename}: homepage 建议使用 http:// 或 https:// 开头`);
+    } else if (!isHttpUrl(profile.homepage)) {
+      errors.push(`${filename}: homepage 必须是 http:// 或 https:// 开头的有效 URL`);
     }
   }
 
@@ -237,6 +249,7 @@ module.exports = {
   readAndValidateAll,
   validateProfile,
   validateGithubHandle,
+  isHttpUrl,
   ALLOWED_STYLES,
   ALLOWED_AVATARS,
   CHEERS_MAX_PER_PROFILE,
