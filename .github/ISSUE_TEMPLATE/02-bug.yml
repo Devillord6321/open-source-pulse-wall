@@ -1,0 +1,57 @@
+name: 我发现了 Bug
+description: 页面、命令、Action 行为不符合预期。
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢报告 Bug！请尽量提供下面的信息，越具体越容易复现。
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: 问题概述
+      placeholder: "例如：npm run validate 在 PowerShell 下报 ENOENT。"
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      description: 一步一步写，让别人能照着做出同样的结果。
+      placeholder: |
+        1. clone 仓库
+        2. 在 PowerShell 运行 `npm run validate`
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望结果
+      placeholder: "校验通过并打印 Validation passed."
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际结果（含日志 / 截图）
+      description: 长日志请用三个反引号（```）包起来。
+      placeholder: |
+        ```
+        Error: ENOENT: no such file or directory ...
+        ```
+    validations:
+      required: true
+
+  - type: input
+    id: env
+    attributes:
+      label: 环境
+      placeholder: "Windows 10 / Node 20.10 / PowerShell"
+    validations:
+      required: true

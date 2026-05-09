@@ -63,6 +63,8 @@ async function refreshGithubSync() {
         repository,
         events: [],
         commits: githubState.commits || [],
+        issues: githubState.issues || [],
+        pullRequests: githubState.pullRequests || [],
         message: error.message
       };
     }

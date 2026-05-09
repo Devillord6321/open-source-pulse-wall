@@ -12,5 +12,12 @@
   "city": "北京",
   "style": "sketch",
   "avatar": "avatars/avatar-02.png",
-  "homepage": ""
+  "homepage": "",
+  "cheers": [
+    {
+      "from": "nanzhi84",
+      "message": "示范：第一次合并 PR，节奏稳！",
+      "ts": "2026-05-09"
+    }
+  ]
 }

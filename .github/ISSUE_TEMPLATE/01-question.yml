@@ -1,0 +1,45 @@
+name: 我有一个问题
+description: 不知道某个步骤怎么做、命令是什么意思、流程为什么这样设计——都欢迎提问。
+title: "[Question] "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        在提问之前，建议你先：
+        1. 看一遍 `README.md`（涵盖完整贡献流程）
+        2. 在 [Issues 列表](../../issues?q=is%3Aissue) 里搜一下关键词，确认没有人问过同样的问题
+
+  - type: textarea
+    id: context
+    attributes:
+      label: 我的背景 / 我在做什么
+      description: 你在哪一步？目标是什么？
+      placeholder: "例如：我想给 @octocat 的 profile 加一条 cheer，分支已经创建了。"
+    validations:
+      required: true
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: 我已经尝试了什么
+      description: 列出你已经做过的事，能让回答你的人少走弯路。
+      placeholder: |
+        - 跑了 npm run validate，没报错
+        - 看了 README 的「冲突处理」章节
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: 我具体想问什么
+      placeholder: "例如：cheers 字段的 ts 是必填的吗？格式必须是 ISO 8601 吗？"
+    validations:
+      required: true
+
+  - type: input
+    id: env
+    attributes:
+      label: 环境
+      placeholder: "Windows 10 / Node 20.10 / PowerShell"

@@ -46,6 +46,7 @@
         <a href="#feedback">实时反馈</a>
         <a href="#contribute">开始贡献</a>
         <a href="#wall">贡献墙</a>
+        <a href="#board">公告板</a>
         <a href="#history">Git 历史</a>
         <a href="#guide">课堂流程</a>
       </nav>
@@ -123,6 +124,14 @@ git push origin feat/your-name
             <div><strong id="statValidation">...</strong><span>验证通过</span><small>所有提交均已通过</small></div>
           </article>
           <article class="stat-card">
+            <svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="18" /><path d="M24 14v11l8 4" /><path d="M16 8h16M19 6h10" /></svg>
+            <div><strong id="statIssues">--</strong><span>Issue 累计</span><small id="statIssuesNote">open / closed</small></div>
+          </article>
+          <article class="stat-card">
+            <svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="14" cy="12" r="4" /><circle cx="14" cy="36" r="4" /><circle cx="34" cy="36" r="4" /><path d="M14 16v16M14 16c0 12 8 14 20 14" /></svg>
+            <div><strong id="statReview">--</strong><span>等待 Review</span><small id="statReviewNote">PR 等同学回应</small></div>
+          </article>
+          <article class="stat-card">
             <svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="17" /><path d="M24 12v13l9 5" /></svg>
             <div><strong id="statPulse">...</strong><span>最后更新</span><small id="statStacks">0 个技术标签</small></div>
           </article>
@@ -179,6 +188,8 @@ git push origin feat/your-name
           <label><input type="radio" name="style" value="minimal" /> 简约</label>
           <label><input type="radio" name="style" value="nature" checked /> 自然</label>
           <label><input type="radio" name="style" value="sketch" /> 手绘</label>
+          <label><input type="radio" name="style" value="notebook" /> 笔记</label>
+          <label><input type="radio" name="style" value="ink" /> 墨水</label>
           <label><input type="radio" name="style" value="sage" /> 极客</label>
         </fieldset>
         <fieldset class="avatar-options">
@@ -232,6 +243,47 @@ git push origin feat/your-name
       </div>
     </section>
 
+    <section class="board-section" id="board" aria-label="Issue 与 Review 公告板">
+      <div class="section-head inline-head">
+        <div class="section-title">
+          <h2>公告板</h2>
+          <p class="board-summary" id="boardSummary">等待 GitHub 同步 Issue 与 PR 数据</p>
+        </div>
+        <a class="text-link board-open" id="openBoardRepo" href="#" target="_blank" rel="noreferrer" hidden>在 GitHub 查看</a>
+      </div>
+      <div class="board-grid">
+        <article class="board-column" aria-label="最近 Issue">
+          <header class="board-column-head">
+            <div class="board-column-title">
+              <span class="board-column-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="3" /></svg>
+              </span>
+              <h3>最近 Issue</h3>
+            </div>
+            <a class="board-column-link" id="openIssuesLink" href="#" target="_blank" rel="noreferrer" hidden>查看全部</a>
+          </header>
+          <ol class="board-list" id="issuesList">
+            <li class="board-empty">等待同学提第一个 Issue</li>
+          </ol>
+        </article>
+
+        <article class="board-column" aria-label="等待 Review 的 PR">
+          <header class="board-column-head">
+            <div class="board-column-title">
+              <span class="board-column-icon board-column-icon-pr" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5" /><circle cx="6" cy="18" r="2.5" /><circle cx="18" cy="18" r="2.5" /><path d="M6 8.5v7M6 8.5c0 6 4 7 12 7" /></svg>
+              </span>
+              <h3>等待 Review 的 PR</h3>
+            </div>
+            <a class="board-column-link" id="openPullsLink" href="#" target="_blank" rel="noreferrer" hidden>查看全部</a>
+          </header>
+          <ol class="board-list" id="pullsList">
+            <li class="board-empty">还没有等待 review 的 PR</li>
+          </ol>
+        </article>
+      </div>
+    </section>
+
     <section class="history-section" id="history">
       <div class="section-head inline-head">
         <div class="section-title">
@@ -245,6 +297,8 @@ git push origin feat/your-name
             </span>
             <span id="refreshHistoryLabel">立即拉取</span>
           </button>
+        <button class="text-link history-toggle" id="toggleHistoryMode" type="button" aria-expanded="false"
+            aria-controls="gitGraph" hidden>展开全部</button>
           <a class="text-link history-open" id="openHistoryRepo" href="#" target="_blank" rel="noreferrer" hidden>在 GitHub 查看</a>
         </div>
       </div>
@@ -284,10 +338,98 @@ git push origin feat/your-name
           <p>通过代码审查，合并后你的卡片展示在贡献墙。</p>
         </article>
       </div>
+<div class="conflict-lab">
+    <div class="conflict-head">
+        <h3>冲突处理 5 步法</h3>
+        <p>PR 提示 <code>conflicts must be resolved</code> 时按下面顺序操作。默认 <strong>merge</strong>，<strong>rebase</strong> 进阶。
+        </p>
+    </div>
+
+    <ol class="conflict-flow" aria-label="冲突处理流程">
+        <li>
+            <span class="conflict-step-num">1</span>
+            <h4>Sync</h4>
+            <p>拉老师仓库</p>
+        </li>
+        <li>
+            <span class="conflict-step-num">2</span>
+            <h4>Edit</h4>
+            <p>删冲突标记</p>
+        </li>
+        <li>
+            <span class="conflict-step-num">3</span>
+            <h4>Check</h4>
+            <p><code>npm run validate</code></p>
+        </li>
+        <li>
+            <span class="conflict-step-num">4</span>
+            <h4>Save</h4>
+            <p><code>git add</code> + <code>commit</code></p>
+        </li>
+        <li>
+            <span class="conflict-step-num">5</span>
+            <h4>Push</h4>
+            <p>推到自己分支</p>
+        </li>
+    </ol>
+
+    <div class="conflict-commands">
+        <div class="conflict-commands-head">
+            <span class="conflict-commands-title">完整命令（默认 merge 流程）</span>
+            <button class="conflict-copy" id="copyConflictCommands" type="button">复制</button>
+        </div>
+        <pre><code id="conflictCommands"># 1. Sync 同步老师仓库
+git fetch upstream
+git checkout add-your-profile
+git merge upstream/main
+
+# 2. Edit 打开冲突文件，删掉 &lt;&lt;&lt;&lt;&lt;&lt;&lt; / ======= / &gt;&gt;&gt;&gt;&gt;&gt;&gt; 三行
+#    把两边内容合并成合法 JSON
+
+# 3. Check 校验
+npm run validate
+
+# 4. Save 提交
+git add &lt;冲突文件&gt;
+git commit
+
+# 5. Push 推送
+git push origin add-your-profile</code></pre>
+    </div>
+
+    <p class="conflict-rebase-hint">
+        <strong>进阶 rebase：</strong>第 1 步把 <code>merge</code> 换成 <code>rebase</code>，遇到冲突修完后
+        <code>git rebase --continue</code>，第 5 步用 <code>git push --force-with-lease</code>（不要 <code>-f</code>）。
+    </p>
+</div>
+
+<div class="resource-grid">
+    <article class="resource-card">
+        <div class="resource-icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h11a3 3 0 0 1 3 3v5a3 3 0 0 1-3 3h-3l-4 3v-3H5a3 3 0 0 1-3-3V9a3 3 0 0 1 3-3Z" /><path d="M7 10h7M7 13h5" /></svg>
+        </div>
+        <h4>给同学加油 (Cheers)</h4>
+        <p>在对方的 <code>cheers</code> 数组里追加 <code>{ from, message }</code>。多人同时加油会触发冲突，正好练习上面五步。</p>
+    </article>
+    <article class="resource-card">
+        <div class="resource-icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10Z"/><path d="m9 12 2 2 4-4"/></svg>
+        </div>
+        <h4>提一个好 Issue</h4>
+        <p>四种模板可选。标题「动词+现象」，复现步骤一步步写，长日志用 <code>```</code> 包起来。</p>
+    </article>
+    <article class="resource-card">
+        <div class="resource-icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+        <h4>请 Reviewer</h4>
+        <p>老师自动指派；Action 随机抽同学 @ 提醒；也可在 PR 手动 <code>@同学</code>。改完记得点 <strong>Re-request review</strong>。</p>
+    </article>
+</div>
     </section>
 
     <section class="about" id="about">
-      <p>© 2024 Open Source Pulse Wall · 让学习被看见，让贡献被记住。</p>
+    <p>© 2026 Open Source Pulse Wall · 让学习被看见，让贡献被记住。</p>
     </section>
   </main>
 

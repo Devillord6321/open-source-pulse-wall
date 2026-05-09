@@ -1,0 +1,23 @@
+# CODEOWNERS for Open Source Pulse Wall classroom repo.
+#
+# Each line is a file pattern followed by one or more owners. Owners are
+# automatically requested for review when a PR touches matching files.
+#
+# IMPORTANT: replace `@TEACHER_HANDLE` below with the real GitHub handle of
+# the teacher / TA who runs the classroom. You can also list multiple owners
+# separated by spaces, e.g. `@teacher @ta1 @ta2`.
+
+# Default fallback: teacher reviews everything.
+*                       @TEACHER_HANDLE
+
+# Profile JSON files: teacher reviews structure, but classmates can also
+# leave cheers without needing the teacher's approval. The teacher will
+# still be auto-requested as reviewer.
+data/profiles/*.json    @TEACHER_HANDLE
+
+# Anything that touches validation, server, or workflows should be reviewed
+# carefully by the teacher.
+scripts/                @TEACHER_HANDLE
+.github/                @TEACHER_HANDLE
+server.js               @TEACHER_HANDLE
+package.json            @TEACHER_HANDLE

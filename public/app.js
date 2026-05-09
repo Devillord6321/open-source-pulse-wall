@@ -10,10 +10,13 @@ const GRAPH_PADDING_TOP = 16;
 const GRAPH_PADDING_LEFT = 18;
 const GRAPH_PALETTE = ['#3b6064', '#a36a3b', '#5b8a3a', '#8a3b6a', '#3b6a8a', '#6a8a3b', '#8a5b3b'];
 const REFRESH_LABEL_DEFAULT = '立即拉取';
+const HISTORY_PREVIEW_LIMIT = 8;
 
 const state = {
   knownHandles: new Set(),
   knownGithubEvents: new Set(),
+  knownCheerKeys: new Set(),
+  bootstrappedCheers: false,
   feed: [],
   lastOk: null,
   fallbackTimer: null,
@@ -25,7 +28,9 @@ const state = {
   refreshing: false,
   refreshCooldownTimer: null,
   knownCommitShas: new Set(),
-  bootstrappedHistory: false
+  bootstrappedHistory: false,
+  historyExpanded: false,
+  lastHistoryPayload: null
 };
 
 const AVATARS = Array.from({ length: 10 }, (_, index) => {
@@ -48,6 +53,10 @@ const elements = {
   statValidation: $('#statValidation'),
   statStacks: $('#statStacks'),
   statPulse: $('#statPulse'),
+  statIssues: $('#statIssues'),
+  statIssuesNote: $('#statIssuesNote'),
+  statReview: $('#statReview'),
+  statReviewNote: $('#statReviewNote'),
   validationBox: $('#validationBox'),
   liveFeed: $('#liveFeed'),
   wall: $('#contributorsWall'),
@@ -77,7 +86,14 @@ const elements = {
   historyCount: $('#historyCount'),
   refreshHistory: $('#refreshHistory'),
   refreshHistoryLabel: $('#refreshHistoryLabel'),
-  openHistoryRepo: $('#openHistoryRepo')
+  openHistoryRepo: $('#openHistoryRepo'),
+  toggleHistoryMode: $('#toggleHistoryMode'),
+  boardSummary: $('#boardSummary'),
+  openBoardRepo: $('#openBoardRepo'),
+  issuesList: $('#issuesList'),
+  pullsList: $('#pullsList'),
+  openIssuesLink: $('#openIssuesLink'),
+  openPullsLink: $('#openPullsLink')
 };
 
 const formFields = {
@@ -130,9 +146,31 @@ function toast(message) {
   toast.timer = window.setTimeout(() => elements.toast.classList.remove('show'), 2100);
 }
 
+const EVENT_ICON_PATHS = {
+  cheer: '<path d="M5 6h11a3 3 0 0 1 3 3v5a3 3 0 0 1-3 3h-3l-4 3v-3H5a3 3 0 0 1-3-3V9a3 3 0 0 1 3-3Z" />',
+  issue_opened: '<circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="3" />',
+  issue_closed: '<circle cx="12" cy="12" r="9" /><path d="m8 12 3 3 5-6" />',
+  pr_opened: '<circle cx="6" cy="6" r="2.5" /><circle cx="18" cy="18" r="2.5" /><path d="M6 8.5v10M6 8.5c0 6 4 7 12 7" />',
+  pr_closed: '<circle cx="6" cy="6" r="2.5" /><circle cx="18" cy="18" r="2.5" /><path d="M6 8.5v10M14 14l8 8M22 14l-8 8" />',
+  review_requested: '<circle cx="9" cy="8" r="3" /><path d="M3 19c.6-3.2 3-5 6-5s5.4 1.8 6 5" /><path d="M17 6h5M19.5 3.5v5" />',
+  commit: '<circle cx="12" cy="12" r="3" /><path d="M3 12h6M15 12h6" />',
+  contributor: '<circle cx="12" cy="9" r="3.5" /><path d="M5 19c.8-3.6 3.4-6 7-6s6.2 2.4 7 6" />',
+  validation: '<path d="M5 12l4 4 10-10" />',
+  pulse: '<path d="M3 12h4l3-7 4 14 3-7h4" />',
+  generic: '<circle cx="12" cy="12" r="6" />'
+};
+
+function eventIconMarkup(type) {
+  const path = EVENT_ICON_PATHS[type] || EVENT_ICON_PATHS.generic;
+  return `<span class="event-icon" aria-hidden="true"><svg viewBox="0 0 24 24">${path}</svg></span>`;
+}
+
 function feedMarkup(items) {
   return items
-    .map((item) => `<li><time>${formatTime(item.time)}</time><span>${htmlEscape(item.message)}</span></li>`)
+    .map((item) => {
+      const type = htmlEscape(item.type || 'generic');
+      return `<li data-event-type="${type}">${eventIconMarkup(item.type || 'generic')}<time>${formatTime(item.time)}</time><span>${htmlEscape(item.message)}</span></li>`;
+    })
     .join('');
 }
 
@@ -155,8 +193,8 @@ function renderFeed() {
   }
 }
 
-function addFeed(message, time = new Date().toISOString()) {
-  state.feed.unshift({ message, time });
+function addFeed(message, time = new Date().toISOString(), type = 'generic') {
+  state.feed.unshift({ message, time, type });
   state.feed = state.feed.slice(0, MAX_FEED_ITEMS);
   renderFeed();
 }
@@ -240,6 +278,49 @@ function landscapeMarkup() {
   `;
 }
 
+function cheersMarkup(profile, options = {}) {
+  const cheers = Array.isArray(profile.cheers) ? profile.cheers : [];
+  if (!cheers.length) {
+    if (options.preview) {
+      return `
+        <div class="cheers-block is-empty" aria-label="同学寄语">
+          <span class="cheers-label">寄语 0</span>
+          <p class="cheers-hint">合并 PR 后，同学可以来你的卡片留下加油寄语</p>
+        </div>
+      `;
+    }
+    return '';
+  }
+
+  const ordered = cheers.slice().reverse();
+  const previewItems = ordered.slice(0, options.preview ? 4 : 2);
+  const moreCount = ordered.length - previewItems.length;
+  const items = previewItems
+    .map((cheer) => `
+      <li>
+        <span class="cheer-from">@${htmlEscape(cheer.from)}</span>
+        <span class="cheer-message">${htmlEscape(cheer.message)}</span>
+      </li>
+    `)
+    .join('');
+  const moreLine = moreCount > 0
+    ? `<li class="cheers-more">还有 ${moreCount} 条寄语</li>`
+    : '';
+
+  return `
+    <div class="cheers-block" aria-label="同学寄语">
+      <div class="cheers-head">
+        <span class="cheers-label">寄语 ${ordered.length}</span>
+        <svg class="cheers-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M5 6h11a3 3 0 0 1 3 3v5a3 3 0 0 1-3 3h-3l-4 3v-3H5a3 3 0 0 1-3-3V9a3 3 0 0 1 3-3Z" />
+          <path d="M7 10h7M7 13h5" />
+        </svg>
+      </div>
+      <ul class="cheers-list">${items}${moreLine}</ul>
+    </div>
+  `;
+}
+
 function cardMarkup(profile, options = {}) {
   const style = styles.includes(profile.style) ? profile.style : 'nature';
   const name = htmlEscape(profile.name || 'Anonymous');
@@ -257,9 +338,14 @@ function cardMarkup(profile, options = {}) {
     ? `<a href="${htmlEscape(homepage)}" target="_blank" rel="noreferrer">GitHub</a>`
     : '<span>GitHub</span>';
   const avatar = htmlEscape(avatarForProfile(profile));
+  const cheerCount = Array.isArray(profile.cheers) ? profile.cheers.length : 0;
+  const cheerBadge = cheerCount > 0
+    ? `<span class="cheer-badge" title="收到 ${cheerCount} 条同学寄语">寄语 ${cheerCount}</span>`
+    : '';
 
   return `
     <article class="profile-card ${options.preview ? 'is-preview' : ''}" data-style="${htmlEscape(style)}">
+      ${cheerBadge}
       <div class="profile-top">
         <img class="avatar-image" src="${avatar}" alt="${name} 的头像" loading="lazy" />
         <div class="identity">
@@ -274,6 +360,7 @@ function cardMarkup(profile, options = {}) {
         <span>${city}</span>
       </div>
       <div class="profile-tags">${tags}</div>
+      ${cheersMarkup(profile, options)}
       ${options.preview ? landscapeMarkup() : ''}
       <div class="profile-footer">
         <span>${file}</span>
@@ -292,13 +379,54 @@ function updateStats(payload) {
     (person.stack || []).forEach((tag) => stackSet.add(String(tag).trim().toLowerCase()));
   });
 
+  const cheersTotal = typeof payload.cheersTotal === 'number'
+    ? payload.cheersTotal
+    : contributors.reduce((sum, person) => sum + (Array.isArray(person.cheers) ? person.cheers.length : 0), 0);
+
   if (elements.statCount) elements.statCount.textContent = contributorCount;
   if (elements.statCountNote) {
-    elements.statCountNote.textContent = github.ok ? 'profile JSON 数量' : '本地 profile 数量';
+    elements.statCountNote.textContent = cheersTotal > 0
+      ? `累计 ${cheersTotal} 条互相寄语`
+      : (github.ok ? 'profile JSON 数量' : '本地 profile 数量');
   }
   if (elements.statValidation) elements.statValidation.textContent = payload.ok ? '100%' : '待修复';
   if (elements.statStacks) elements.statStacks.textContent = `${stackSet.size} 个技术标签`;
   if (elements.statPulse) elements.statPulse.textContent = formatTime(github.latestCommitAt || github.pushedAt || payload.generatedAt);
+
+  if (elements.statIssues) {
+    const total = Number(github.issuesTotal ?? 0);
+    elements.statIssues.textContent = github.configured ? formatNumber(total) : '--';
+  }
+  if (elements.statIssuesNote) {
+    if (!github.configured) {
+      elements.statIssuesNote.textContent = '连接 GitHub 后可见';
+    } else {
+      const open = Number(github.openIssuesTotal ?? 0);
+      const total = Number(github.issuesTotal ?? 0);
+      elements.statIssuesNote.textContent = total > 0
+        ? `${open} 个 open · ${total - open} 个 closed`
+        : '等同学提第一个 Issue';
+    }
+  }
+  if (elements.statReview) {
+    const awaiting = Number(github.awaitingReviewTotal ?? 0);
+    elements.statReview.textContent = github.configured ? formatNumber(awaiting) : '--';
+  }
+  if (elements.statReviewNote) {
+    if (!github.configured) {
+      elements.statReviewNote.textContent = '连接 GitHub 后可见';
+    } else {
+      const open = Number(github.pullRequestsTotal ?? 0);
+      const awaiting = Number(github.awaitingReviewTotal ?? 0);
+      if (awaiting > 0) {
+        elements.statReviewNote.textContent = `共 ${open} 个 open PR`;
+      } else if (open > 0) {
+        elements.statReviewNote.textContent = `${open} 个 open PR · 暂无人请 review`;
+      } else {
+        elements.statReviewNote.textContent = '没有进行中的 PR';
+      }
+    }
+  }
 }
 
 function updateValidation(payload) {
@@ -333,6 +461,8 @@ function sortContributors(contributors) {
 }
 
 function wallSearchText(profile) {
+  const cheers = Array.isArray(profile.cheers) ? profile.cheers : [];
+  const cheerTexts = cheers.flatMap((cheer) => [cheer.from, cheer.message]);
   return [
     profile.name,
     profile.github,
@@ -340,7 +470,8 @@ function wallSearchText(profile) {
     profile.motto,
     profile.city,
     profile.file,
-    ...(Array.isArray(profile.stack) ? profile.stack : [])
+    ...(Array.isArray(profile.stack) ? profile.stack : []),
+    ...cheerTexts
   ]
     .map((value) => String(value || '').toLowerCase())
     .join(' ');
@@ -452,17 +583,44 @@ function detectNewContributors(payload) {
   state.knownHandles = incoming;
 
   if (newHandles.length && state.lastOk !== null) {
-    addFeed(`新增 ${newHandles.length} 位贡献者: ${newHandles.join(', ')}`, payload.generatedAt);
+    addFeed(`新增 ${newHandles.length} 位贡献者: ${newHandles.join(', ')}`, payload.generatedAt, 'contributor');
   }
+}
+
+function detectNewCheers(payload) {
+  const allCheers = [];
+  (payload.contributors || []).forEach((profile) => {
+    const owner = String(profile.github || profile.name || '').toLowerCase();
+    (profile.cheers || []).forEach((cheer) => {
+      const key = `${owner}|${String(cheer.from || '').toLowerCase()}|${String(cheer.message || '').trim()}`;
+      allCheers.push({ key, profile, cheer });
+    });
+  });
+
+  if (!state.bootstrappedCheers) {
+    state.knownCheerKeys = new Set(allCheers.map((item) => item.key));
+    state.bootstrappedCheers = true;
+    return;
+  }
+
+  const fresh = allCheers.filter((item) => !state.knownCheerKeys.has(item.key));
+  fresh.forEach((item) => state.knownCheerKeys.add(item.key));
+
+  if (!fresh.length) return;
+
+  fresh.forEach(({ profile, cheer }) => {
+    const to = profile.github || profile.name || 'unknown';
+    addFeed(`@${cheer.from} → @${to}: ${cheer.message}`, cheer.ts || payload.generatedAt, 'cheer');
+  });
 }
 
 function syncGithubEvents(payload) {
   const events = payload.github?.events || [];
   events.slice().reverse().forEach((event) => {
-    const key = `${event.type}:${event.time}:${event.message}`;
+    const key = event.key || `${event.type}:${event.time}:${event.message}`;
     if (state.knownGithubEvents.has(key)) return;
     state.knownGithubEvents.add(key);
-    addFeed(event.message, event.time || payload.generatedAt);
+    addFeed(event.message, event.time || payload.generatedAt, event.type || 'generic');
   });
 }
 
@@ -646,6 +804,7 @@ function commitListMarkup(rows, commits) {
 function updateHistorySection(payload) {
   if (!elements.gitGraph) return;
 
+  state.lastHistoryPayload = payload;
   const github = payload.github || {};
   const commits = Array.isArray(github.commits) ? github.commits : [];
 
@@ -666,6 +825,8 @@ function updateHistorySection(payload) {
     elements.gitGraph.innerHTML = '<div class="git-graph-empty">尚未连接 GitHub。配置后会显示提交图。</div>';
     if (elements.historySummary) elements.historySummary.textContent = github.message || '等待 GitHub 同步配置';
     if (elements.historyCount) elements.historyCount.textContent = '--';
+    updateHistoryToggle(0);
+    detectNewCommits(commits, payload.generatedAt);
     return;
   }
 
@@ -677,27 +838,55 @@ function updateHistorySection(payload) {
         : (github.message || 'GitHub 同步失败');
     }
     if (elements.historyCount) elements.historyCount.textContent = '0';
+    updateHistoryToggle(0);
+    detectNewCommits(commits, payload.generatedAt);
     return;
   }
 
-  const { rows, maxLanes } = computeGitGraph(commits);
-  const totalHeight = GRAPH_PADDING_TOP * 2 + commits.length * GRAPH_ROW_HEIGHT;
+  const visibleCommits = state.historyExpanded
+    ? commits
+    : commits.slice(0, HISTORY_PREVIEW_LIMIT);
+
+  const { rows, maxLanes } = computeGitGraph(visibleCommits);
+  const totalHeight = GRAPH_PADDING_TOP * 2 + visibleCommits.length * GRAPH_ROW_HEIGHT;
 
   elements.gitGraph.innerHTML = `
-    ${gitGraphSvg(rows, commits, maxLanes)}
+    ${gitGraphSvg(rows, visibleCommits, maxLanes)}
     <ol class="git-commit-list" style="height: ${totalHeight}px">
-      ${commitListMarkup(rows, commits)}
+      ${commitListMarkup(rows, visibleCommits)}
     </ol>
   `;
 
   if (elements.historySummary) {
+    const latest = formatRelativeTime(github.latestCommitAt) || '刚刚';
+    const visibleNote = state.historyExpanded || commits.length <= HISTORY_PREVIEW_LIMIT
+      ? `共 ${commits.length} 个提交`
+      : `预览最近 ${visibleCommits.length} / ${commits.length} 个提交`;
     elements.historySummary.textContent = github.ok
-      ? `${github.repository} · 最新 ${formatRelativeTime(github.latestCommitAt) || '刚刚'}`
+      ? `${github.repository} · 最新 ${latest} · ${visibleNote}`
       : (github.message || 'GitHub 同步失败');
   }
   if (elements.historyCount) elements.historyCount.textContent = String(commits.length);
 
+  updateHistoryToggle(commits.length);
   detectNewCommits(commits, payload.generatedAt);
+}
+
+function updateHistoryToggle(totalCommits) {
+  if (!elements.toggleHistoryMode) return;
+
+  if (totalCommits <= HISTORY_PREVIEW_LIMIT) {
+    elements.toggleHistoryMode.hidden = true;
+    state.historyExpanded = false;
+    elements.toggleHistoryMode.setAttribute('aria-expanded', 'false');
+    return;
+  }
+
+  elements.toggleHistoryMode.hidden = false;
+  elements.toggleHistoryMode.setAttribute('aria-expanded', String(state.historyExpanded));
+  elements.toggleHistoryMode.textContent = state.historyExpanded
+    ? '收起'
+    : `展开全部 (${totalCommits} 条)`;
 }
 
 function detectNewCommits(commits, generatedAt) {
@@ -714,7 +903,7 @@ function detectNewCommits(commits, generatedAt) {
     const summary = fresh.length === 1
       ? `新增提交 ${fresh[0].author}: ${fresh[0].message}`
       : `新增 ${fresh.length} 个提交`;
-    addFeed(summary, generatedAt);
+    addFeed(summary, generatedAt, 'commit');
   }
 }
 
@@ -784,6 +973,196 @@ function bindHistoryControls() {
   if (elements.refreshHistory) {
     elements.refreshHistory.addEventListener('click', manuallyRefreshHistory);
   }
+
+  if (elements.toggleHistoryMode) {
+    elements.toggleHistoryMode.addEventListener('click', () => {
+      state.historyExpanded = !state.historyExpanded;
+      if (state.lastHistoryPayload) {
+        updateHistorySection(state.lastHistoryPayload);
+      }
+    });
+  }
+}
+
+function avatarBubbleMarkup(person, fallbackChar) {
+  if (person?.avatarUrl) {
+    return `<img src="${htmlEscape(person.avatarUrl)}" alt="" loading="lazy" />`;
+  }
+  const fallback = htmlEscape((fallbackChar || person?.login || person?.author || '?').slice(0, 1).toUpperCase());
+  return `<span class="avatar-fallback">${fallback}</span>`;
+}
+
+function issueRowMarkup(issue) {
+  const stateLabel = issue.state === 'closed' ? 'closed' : 'open';
+  const stateText = issue.state === 'closed' ? 'Closed' : 'Open';
+  const link = issue.htmlUrl || '#';
+  const target = issue.htmlUrl ? ' target="_blank" rel="noreferrer"' : '';
+  const author = htmlEscape(issue.author || 'unknown');
+  const title = htmlEscape(issue.title || '(no title)');
+  const number = htmlEscape(`#${issue.number}`);
+  const relative = htmlEscape(formatRelativeTime(issue.createdAt) || '未知时间');
+  const exact = htmlEscape(issue.createdAt || '');
+  const avatarMarkup = avatarBubbleMarkup({ avatarUrl: issue.avatarUrl, login: issue.author }, issue.author);
+  const commentLine = issue.commentCount > 0
+    ? `<span class="board-item-sep">·</span><span>${issue.commentCount} 条评论</span>`
+    : '';
+
+  return `
+    <li class="board-item" data-event-type="${issue.state === 'closed' ? 'issue_closed' : 'issue_opened'}">
+      <a class="board-item-link" href="${htmlEscape(link)}"${target}>
+        <span class="board-item-avatar">${avatarMarkup}</span>
+        <span class="board-item-body">
+          <span class="board-item-title">
+            <span class="board-item-number">${number}</span>
+            <span class="board-item-text">${title}</span>
+          </span>
+          <span class="board-item-meta">
+            <span class="board-item-author">@${author}</span>
+            <span class="board-item-sep">·</span>
+            <time datetime="${exact}">${relative}</time>
+            ${commentLine}
+          </span>
+        </span>
+        <span class="board-item-state" data-state="${stateLabel}">
+          <span class="board-item-state-dot"></span>${stateText}
+        </span>
+      </a>
+    </li>
+  `;
+}
+
+function reviewerBubblesMarkup(pr) {
+  const reviewers = Array.isArray(pr.requestedReviewers) ? pr.requestedReviewers : [];
+  const teams = Array.isArray(pr.requestedTeams) ? pr.requestedTeams : [];
+
+  if (!reviewers.length && !teams.length) {
+    return '<span class="board-no-reviewer">尚未请人 review</span>';
+  }
+
+  const reviewerBubbles = reviewers.map((reviewer) => {
+    const login = htmlEscape(reviewer.login || 'unknown');
+    if (reviewer.avatarUrl) {
+      return `<span class="board-reviewer-bubble"><img src="${htmlEscape(reviewer.avatarUrl)}" alt="" loading="lazy" />@${login}</span>`;
+    }
+    return `<span class="board-reviewer-bubble no-avatar">@${login}</span>`;
+  }).join('');
+
+  const teamBubbles = teams.map((team) => {
+    const name = htmlEscape(team || 'team');
+    return `<span class="board-reviewer-bubble no-avatar">@${name}</span>`;
+  }).join('');
+
+  return `
+    <span class="board-reviewers">
+      <span class="board-reviewers-label">请：</span>
+      ${reviewerBubbles}${teamBubbles}
+    </span>
+  `;
+}
+
+function pullRowMarkup(pr) {
+  const stateLabel = pr.draft ? 'draft' : 'open';
+  const stateText = pr.draft ? 'Draft' : 'Open';
+  const link = pr.htmlUrl || '#';
+  const target = pr.htmlUrl ? ' target="_blank" rel="noreferrer"' : '';
+  const author = htmlEscape(pr.author || 'unknown');
+  const title = htmlEscape(pr.title || '(no title)');
+  const number = htmlEscape(`#${pr.number}`);
+  const relative = htmlEscape(formatRelativeTime(pr.createdAt) || '未知时间');
+  const exact = htmlEscape(pr.createdAt || '');
+  const avatarMarkup = avatarBubbleMarkup({ avatarUrl: pr.avatarUrl, login: pr.author }, pr.author);
+
+  return `
+    <li class="board-item" data-event-type="pr_opened">
+      <a class="board-item-link" href="${htmlEscape(link)}"${target}>
+        <span class="board-item-avatar">${avatarMarkup}</span>
+        <span class="board-item-body">
+          <span class="board-item-title">
+            <span class="board-item-number">${number}</span>
+            <span class="board-item-text">${title}</span>
+          </span>
+          <span class="board-item-meta">
+            <span class="board-item-author">@${author}</span>
+            <span class="board-item-sep">·</span>
+            <time datetime="${exact}">${relative}</time>
+          </span>
+          <span class="board-item-meta">
+            ${reviewerBubblesMarkup(pr)}
+          </span>
+        </span>
+        <span class="board-item-state" data-state="${stateLabel}">
+          <span class="board-item-state-dot"></span>${stateText}
+        </span>
+      </a>
+    </li>
+  `;
+}
+
+function updateBoardSection(payload) {
+  const github = payload.github || {};
+  const issues = Array.isArray(github.issues) ? github.issues : [];
+  const pullRequests = Array.isArray(github.pullRequests) ? github.pullRequests : [];
+
+  if (elements.openBoardRepo) {
+    if (github.htmlUrl) {
+      elements.openBoardRepo.hidden = false;
+      elements.openBoardRepo.href = `${github.htmlUrl}/issues`;
+    } else {
+      elements.openBoardRepo.hidden = true;
+    }
+  }
+
+  if (elements.openIssuesLink) {
+    if (github.htmlUrl) {
+      elements.openIssuesLink.hidden = false;
+      elements.openIssuesLink.href = `${github.htmlUrl}/issues`;
+    } else {
+      elements.openIssuesLink.hidden = true;
+    }
+  }
+
+  if (elements.openPullsLink) {
+    if (github.htmlUrl) {
+      elements.openPullsLink.hidden = false;
+      elements.openPullsLink.href = `${github.htmlUrl}/pulls`;
+    } else {
+      elements.openPullsLink.hidden = true;
+    }
+  }
+
+  if (elements.boardSummary) {
+    if (!github.configured) {
+      elements.boardSummary.textContent = github.message || '连接 GitHub 后会显示同学提的 Issue 和等 review 的 PR';
+    } else {
+      const issuesTotal = Number(github.issuesTotal ?? 0);
+      const openIssues = Number(github.openIssuesTotal ?? 0);
+      const awaiting = Number(github.awaitingReviewTotal ?? 0);
+      const pullsTotal = Number(github.pullRequestsTotal ?? 0);
+      elements.boardSummary.textContent = `Issue ${openIssues} open / ${issuesTotal} 累计 · PR ${awaiting} 等 review / ${pullsTotal} open`;
+    }
+  }
+
+  if (elements.issuesList) {
+    const warnings = github.issuesWarning ? `<li class="board-warning">Issue 数据未能拉取：${htmlEscape(github.issuesWarning)}</li>` : '';
+    if (!github.configured) {
+      elements.issuesList.innerHTML = `${warnings}<li class="board-empty">连接 GitHub 后显示最近 Issue</li>`;
+    } else if (!issues.length) {
+      elements.issuesList.innerHTML = `${warnings}<li class="board-empty">等待同学提第一个 Issue</li>`;
+    } else {
+      elements.issuesList.innerHTML = warnings + issues.map(issueRowMarkup).join('');
+    }
+  }
+
+  if (elements.pullsList) {
+    const warnings = github.pullsWarning ? `<li class="board-warning">PR 数据未能拉取：${htmlEscape(github.pullsWarning)}</li>` : '';
+    if (!github.configured) {
+      elements.pullsList.innerHTML = `${warnings}<li class="board-empty">连接 GitHub 后显示等待 review 的 PR</li>`;
+    } else if (!pullRequests.length) {
+      elements.pullsList.innerHTML = `${warnings}<li class="board-empty">还没有进行中的 PR</li>`;
+    } else {
+      elements.pullsList.innerHTML = warnings + pullRequests.map(pullRowMarkup).join('');
+    }
+  }
 }
 
 function applyState(payload) {
@@ -791,14 +1170,16 @@ function applyState(payload) {
   updateStats(payload);
   updateValidation(payload);
   updateWall(payload);
+  updateBoardSection(payload);
   updateHistorySection(payload);
   syncGithubEvents(payload);
   detectNewContributors(payload);
+  detectNewCheers(payload);
 
   if (state.lastOk !== payload.ok) {
-    addFeed(payload.ok ? '数据恢复正常，贡献者墙已刷新' : '数据校验失败，等待修复', payload.generatedAt);
+    addFeed(payload.ok ? '数据恢复正常，贡献者墙已刷新' : '数据校验失败，等待修复', payload.generatedAt, 'validation');
   } else {
-    addFeed(payload.message || '收到一次数据刷新', payload.generatedAt);
+    addFeed(payload.message || '收到一次数据刷新', payload.generatedAt, 'pulse');
   }
 
   state.lastOk = payload.ok;
@@ -847,7 +1228,7 @@ function startFallbackPolling() {
 function connectEvents() {
   if (state.dataMode === 'static') {
     setConnection('online', '静态页面已加载，随 GitHub Pages 构建更新');
-    addFeed('静态页面已加载，合并 main 后自动发布');
+    addFeed('静态页面已加载，合并 main 后自动发布', new Date().toISOString(), 'pulse');
     return;
   }
 
@@ -861,7 +1242,7 @@ function connectEvents() {
 
   source.addEventListener('open', () => {
     setConnection('online', '实时反馈通道已连接');
-    addFeed('SSE 实时通道已连接');
+    addFeed('SSE 实时通道已连接', new Date().toISOString(), 'pulse');
   });
 
   source.addEventListener('state', (event) => {
@@ -1077,6 +1458,14 @@ function bindBuilder() {
   if (elements.copyCloneCommand) {
     elements.copyCloneCommand.addEventListener('click', () => {
       copyText(elements.terminalCommands ? elements.terminalCommands.textContent : '', '已复制课堂命令');
+    });
+  }
+
+  const copyConflictBtn = document.getElementById('copyConflictCommands');
+  const conflictCommandsEl = document.getElementById('conflictCommands');
+  if (copyConflictBtn && conflictCommandsEl) {
+    copyConflictBtn.addEventListener('click', () => {
+      copyText(conflictCommandsEl.textContent || '', '已复制冲突处理命令');
     });
   }
 

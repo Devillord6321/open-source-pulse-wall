@@ -1,0 +1,91 @@
+name: Auto-assign peer reviewer
+
+# Use pull_request_target so we get a write-permissions GITHUB_TOKEN even
+# for PRs opened from forks (which is the normal classroom setup). We do
+# NOT check out PR code, only the base branch's data/profiles directory,
+# so pull_request_target is safe here.
+on:
+  pull_request_target:
+    types: [opened, ready_for_review, reopened]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  pick-peer-reviewer:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.pull_request.draft == false }}
+    steps:
+      - name: Checkout base branch profiles
+        uses: actions/checkout@v4
+
+      - name: Pick a random classmate and post a review request
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            const profilesDir = path.join(process.env.GITHUB_WORKSPACE, 'data', 'profiles');
+            const pr = context.payload.pull_request;
+            const author = String(pr.user.login || '').toLowerCase();
+
+            let peers = [];
+            try {
+              const files = fs.readdirSync(profilesDir)
+                .filter((f) => f.endsWith('.json') && !f.startsWith('_'));
+
+              for (const file of files) {
+                try {
+                  const data = JSON.parse(fs.readFileSync(path.join(profilesDir, file), 'utf8'));
+                  if (data && typeof data.github === 'string' && data.github.trim()) {
+                    peers.push(data.github.trim());
+                  }
+                } catch (parseError) {
+                  core.info(`Skipping unparseable profile ${file}: ${parseError.message}`);
+                }
+              }
+            } catch (readError) {
+              core.info(`Profiles directory unreadable, skipping: ${readError.message}`);
+              return;
+            }
+
+            const eligible = peers.filter((handle) => handle.toLowerCase() !== author);
+
+            if (!eligible.length) {
+              core.info('No eligible peer reviewers found (only PR author exists or directory empty).');
+              return;
+            }
+
+            const picked = eligible[Math.floor(Math.random() * eligible.length)];
+
+            const body = [
+              `:wave: 课堂自动指派同学互评：@${picked}`,
+              ``,
+              `麻烦帮 @${pr.user.login} 看一下这个 PR，留一条 review 评论或者一句 LGTM 就算完成今天的同学互评任务。`,
+              ``,
+              `> 老师已经被 CODEOWNERS 自动指派为 reviewer，所以你不需要顾虑「会不会和老师重复」。`,
+              `> 如果你最近太忙，欢迎在评论里手动 @ 另一位同学接力。`
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              body
+            });
+
+            try {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                labels: ['peer-review-suggested']
+              });
+            } catch (labelError) {
+              core.info(`Could not add peer-review-suggested label: ${labelError.message}`);
+            }
+
+            core.notice(`Picked classmate reviewer: @${picked}`);
