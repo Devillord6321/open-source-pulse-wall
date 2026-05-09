@@ -13,6 +13,7 @@ const {
   buildContributorState,
   resolveGithubRepository
 } = require('./scripts/state-builder');
+const { syncLocalGitRepo } = require('./scripts/git-sync');
 
 const PORT = Number(process.env.PORT || 3008);
 const ROOT = __dirname;
@@ -31,6 +32,32 @@ let githubState = buildUnconfiguredGithubState();
 let currentState = buildState();
 let lastManualRefreshAt = 0;
 let inFlightRefresh = null;
+
+async function runFullRefresh() {
+  // Step 1: pull local repo so newly-merged profiles land on disk before fingerprint poll runs.
+  const gitResult = await syncLocalGitRepo({ root: ROOT });
+
+  // Hand-off to the file-watcher path: a successful ff merge changes profile mtimes,
+  // so trigger pollForChanges immediately instead of waiting up to 700ms for the next tick.
+  if (gitResult.ok && !gitResult.skipped && gitResult.pulled > 0) {
+    pollForChanges();
+  }
+
+  // Step 2: refresh GitHub REST metadata (commits/issues/PRs/etc.) regardless of git result.
+  let githubError = null;
+  try {
+    await refreshGithubSync();
+  } catch (error) {
+    githubError = error;
+  }
+
+  return {
+    git: gitResult,
+    github: githubError
+      ? { ok: false, message: githubError.message, configured: githubState.configured }
+      : { ok: githubState.ok, message: githubState.message, configured: githubState.configured }
+  };
+}
 
 async function refreshGithubSync() {
   if (inFlightRefresh) return inFlightRefresh;
@@ -167,13 +194,14 @@ function handleRequest(req, res) {
     }
 
     lastManualRefreshAt = now;
-    refreshGithubSync()
-      .then(() => {
+    runFullRefresh()
+      .then((result) => {
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({
           ok: true,
-          message: '已从 GitHub 拉取最新数据',
-          generatedAt: currentState.generatedAt
+          generatedAt: currentState.generatedAt,
+          git: result.git,
+          github: result.github
         }));
       })
       .catch((error) => {

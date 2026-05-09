@@ -950,6 +950,32 @@ function startRefreshCooldown(seconds) {
   }, 1000);
 }
 
+function buildRefreshToastMessage(data) {
+  const git = data?.git || {};
+  const github = data?.github || {};
+  const parts = [];
+
+  if (git.ok && !git.skipped) {
+    parts.push(git.pulled > 0
+      ? `贡献者：已 pull ${git.pulled} 个新提交`
+      : '贡献者：本地已是最新');
+  } else if (git.skipped) {
+    parts.push(`贡献者未同步（${git.reason || '已跳过'}）`);
+  } else if (git.reason) {
+    parts.push(`贡献者拉取失败：${git.reason}`);
+  }
+
+  if (github.ok) {
+    parts.push('动态：已刷新 GitHub 元数据');
+  } else if (github.configured === false) {
+    parts.push('动态：未连接 GitHub');
+  } else if (github.message) {
+    parts.push(`动态：刷新失败 - ${github.message}`);
+  }
+
+  return parts.length ? parts.join(' · ') : '已尝试同步';
+}
+
 async function manuallyRefreshHistory() {
   if (state.refreshing || state.dataMode === 'static') return;
 
@@ -975,7 +1001,7 @@ async function manuallyRefreshHistory() {
     }
 
     const data = await response.json();
-    toast(data.message || '已从 GitHub 拉取最新数据');
+    toast(buildRefreshToastMessage(data));
     setRefreshButtonState(REFRESH_LABEL_DEFAULT, false);
   } catch (error) {
     toast(`拉取失败: ${error.message || '未知错误'}`);
