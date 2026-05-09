@@ -208,34 +208,6 @@ git push origin add-your-profile
 
 回到 PR 页面，冲突提示会消失。
 
-#### 进阶：rebase upstream/main
-
-历史更干净（没有 merge commit），但需要 force push。
-
-```bash
-git fetch upstream
-git checkout add-your-profile
-git rebase upstream/main
-```
-
-每遇到一个冲突 commit，重复：编辑 → `npm run validate` → `git add` → `git rebase --continue`。
-
-中途想放弃：
-
-```bash
-git rebase --abort
-```
-
-完成后用 `--force-with-lease` 推送（**不要**用 `-f` / `--force`，会盖掉别人推送）：
-
-```bash
-git push --force-with-lease origin add-your-profile
-```
-
-#### 课堂演示提示
-
-老师可以让两位同学**同时**给第三位同学的 profile 写 cheer。先合并的那个 PR 之后，第二个 PR 必然冲突。投影上现场演示上面五步就行。
-
 ### 第五步：开 Issue
 
 不会写代码也能贡献——发现 bug、有改进想法、卡住了想问，都欢迎开 Issue。
@@ -349,15 +321,6 @@ npm run validate
 字段缺失、JSON 解析失败、GitHub 用户名格式不正确，PR 页面会出现失败提示。这样学生能马上知道贡献是否合格。
 
 另外 `.github/workflows/auto-assign-reviewer.yml` 在 PR 打开时随机抽一位已合并的同学作为 reviewer。
-
----
-
-## 课堂建议节奏
-
-- **第 1 阶段（10 分钟）**：老师演示 Fork → Clone → Branch → PR 流程。
-- **第 2 阶段（15 分钟）**：学生用 Profile Builder 生成 JSON，发起自己的 PR；练习在 PR 里 request 老师 + 1 位同学作为 reviewer。
-- **第 3 阶段（15 分钟）**：学生互相 review PR，老师合并一批；同学之间往别人 profile 的 `cheers` 里加寄语 → 当两人同时 cheer 同一个人时**自然产生冲突** → 投影现场演示《冲突处理 5 步法》。
-- **第 4 阶段（10 分钟）**：挑选一个失败的 PR 讲 GitHub Actions 校验；让每位同学**开一个 Issue**；投影展示实时贡献者墙、寄语徽章、公告板更新。
 
 ---
 
