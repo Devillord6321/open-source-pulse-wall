@@ -22,6 +22,7 @@ const state = {
   fallbackTimer: null,
   dataMode: '',
   activityReturnFocus: null,
+  cheersReturnFocus: null,
   wallContributors: [],
   wallExpanded: false,
   wallVisibleCount: WALL_PREVIEW_LIMIT,
@@ -74,6 +75,12 @@ const elements = {
   activityList: $('#activityList'),
   activityCount: $('#activityCount'),
   closeActivity: $('#closeActivity'),
+  cheersOverlay: $('#cheersOverlay'),
+  cheersPanel: $('#cheersPanel'),
+  cheersTitle: $('#cheersTitle'),
+  cheersSubtitle: $('#cheersSubtitle'),
+  cheersFullList: $('#cheersFullList'),
+  closeCheers: $('#closeCheers'),
   wallSummary: $('#wallSummary'),
   toggleWallMode: $('#toggleWallMode'),
   wallControls: $('#wallControls'),
@@ -295,6 +302,10 @@ function cheersMarkup(profile, options = {}) {
   const ordered = cheers.slice().reverse();
   const previewItems = ordered.slice(0, options.preview ? 4 : 2);
   const moreCount = ordered.length - previewItems.length;
+  const handle = String(profile.github || profile.name || '').trim();
+  const triggerAttr = !options.preview && handle
+    ? ` data-cheers-trigger="${htmlEscape(handle)}"`
+    : '';
   const items = previewItems
     .map((cheer) => `
       <li>
@@ -304,7 +315,9 @@ function cheersMarkup(profile, options = {}) {
     `)
     .join('');
   const moreLine = moreCount > 0
-    ? `<li class="cheers-more">还有 ${moreCount} 条寄语</li>`
+    ? (!options.preview && handle
+      ? `<li class="cheers-more"><button type="button" class="cheers-more-button"${triggerAttr}>还有 ${moreCount} 条寄语 · 查看全部</button></li>`
+      : `<li class="cheers-more">还有 ${moreCount} 条寄语</li>`)
     : '';
 
   return `
@@ -339,8 +352,11 @@ function cardMarkup(profile, options = {}) {
     : '<span>GitHub</span>';
   const avatar = htmlEscape(avatarForProfile(profile));
   const cheerCount = Array.isArray(profile.cheers) ? profile.cheers.length : 0;
+  const cheerHandle = String(profile.github || profile.name || '').trim();
   const cheerBadge = cheerCount > 0
-    ? `<span class="cheer-badge" title="收到 ${cheerCount} 条同学寄语">寄语 ${cheerCount}</span>`
+    ? (!options.preview && cheerHandle
+      ? `<button type="button" class="cheer-badge" data-cheers-trigger="${htmlEscape(cheerHandle)}" title="查看全部 ${cheerCount} 条寄语">寄语 ${cheerCount}</button>`
+      : `<span class="cheer-badge" title="收到 ${cheerCount} 条同学寄语">寄语 ${cheerCount}</span>`)
     : '';
 
   return `
@@ -1306,10 +1322,112 @@ function bindActivityPanel() {
   }
 
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && elements.activityOverlay && !elements.activityOverlay.hidden) {
+    if (event.key !== 'Escape') return;
+    if (elements.cheersOverlay && !elements.cheersOverlay.hidden) {
+      closeCheersOverlay();
+      return;
+    }
+    if (elements.activityOverlay && !elements.activityOverlay.hidden) {
       closeActivityPanel();
     }
   });
+}
+
+function findContributorByHandle(handle) {
+  if (!handle) return null;
+  const target = String(handle).toLowerCase();
+  return state.wallContributors.find((profile) =>
+    String(profile.github || profile.name || '').toLowerCase() === target
+  ) || null;
+}
+
+function cheersFullMarkup(cheers) {
+  if (!cheers.length) {
+    return '<li class="empty-activity"><span>暂无寄语</span></li>';
+  }
+
+  return cheers
+    .slice()
+    .reverse()
+    .map((cheer) => {
+      const from = htmlEscape(cheer.from || 'unknown');
+      const message = htmlEscape(cheer.message || '');
+      const relative = cheer.ts ? formatRelativeTime(cheer.ts) : '';
+      const time = relative ? `<time>${htmlEscape(relative)}</time>` : '<time>—</time>';
+      return `
+        <li>
+          ${time}
+          <div class="cheer-line">
+            <span class="cheer-from">@${from}</span>
+            <span class="cheer-message">${message}</span>
+          </div>
+        </li>
+      `;
+    })
+    .join('');
+}
+
+function openCheersOverlay(profile) {
+  if (!profile || !elements.cheersOverlay || !elements.cheersPanel) return;
+
+  state.cheersReturnFocus = document.activeElement;
+
+  const cheers = Array.isArray(profile.cheers) ? profile.cheers : [];
+  const owner = profile.github || profile.name || 'unknown';
+
+  if (elements.cheersTitle) {
+    elements.cheersTitle.textContent = `@${owner} 收到的寄语`;
+  }
+  if (elements.cheersSubtitle) {
+    elements.cheersSubtitle.textContent = cheers.length
+      ? `共 ${cheers.length} 条寄语，按时间倒序`
+      : '还没有寄语';
+  }
+  if (elements.cheersFullList) {
+    elements.cheersFullList.classList.toggle('is-empty', !cheers.length);
+    elements.cheersFullList.innerHTML = cheersFullMarkup(cheers);
+    elements.cheersFullList.scrollTop = 0;
+  }
+
+  elements.cheersOverlay.hidden = false;
+  document.body.classList.add('activity-open');
+  elements.cheersPanel.focus();
+}
+
+function closeCheersOverlay() {
+  if (!elements.cheersOverlay) return;
+
+  elements.cheersOverlay.hidden = true;
+  if (!elements.activityOverlay || elements.activityOverlay.hidden) {
+    document.body.classList.remove('activity-open');
+  }
+
+  if (state.cheersReturnFocus && typeof state.cheersReturnFocus.focus === 'function') {
+    state.cheersReturnFocus.focus();
+  }
+  state.cheersReturnFocus = null;
+}
+
+function bindCheersOverlay() {
+  if (elements.closeCheers) {
+    elements.closeCheers.addEventListener('click', closeCheersOverlay);
+  }
+
+  if (elements.cheersOverlay) {
+    elements.cheersOverlay.addEventListener('click', (event) => {
+      if (event.target === elements.cheersOverlay) closeCheersOverlay();
+    });
+  }
+
+  if (elements.wall) {
+    elements.wall.addEventListener('click', (event) => {
+      const trigger = event.target.closest('[data-cheers-trigger]');
+      if (!trigger || !elements.wall.contains(trigger)) return;
+      event.preventDefault();
+      const profile = findContributorByHandle(trigger.getAttribute('data-cheers-trigger'));
+      if (profile) openCheersOverlay(profile);
+    });
+  }
 }
 
 function setWallExpanded(expanded) {
@@ -1474,6 +1592,7 @@ function bindBuilder() {
 
 bindBuilder();
 bindActivityPanel();
+bindCheersOverlay();
 bindWallControls();
 bindHistoryControls();
 renderFeed();

@@ -448,6 +448,21 @@ git push origin add-your-profile</code></pre>
     </section>
   </div>
 
+  <div class="activity-overlay cheers-overlay" id="cheersOverlay" hidden>
+    <section class="activity-panel cheers-panel" id="cheersPanel" role="dialog" aria-modal="true" aria-labelledby="cheersTitle" tabindex="-1">
+      <div class="activity-panel-head">
+        <div>
+          <h2 id="cheersTitle">全部寄语</h2>
+          <p id="cheersSubtitle">等待加载</p>
+        </div>
+        <button class="activity-close" id="closeCheers" type="button" aria-label="关闭全部寄语">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+        </button>
+      </div>
+      <ol class="activity-list cheers-full-list" id="cheersFullList"></ol>
+    </section>
+  </div>
+
   <div class="validation-box" id="validationBox" aria-live="polite"></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="app.js"></script>

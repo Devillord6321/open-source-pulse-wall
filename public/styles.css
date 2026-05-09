@@ -979,6 +979,21 @@ legend {
     transform: rotate(2.4deg);
 }
 
+button.cheer-badge {
+    cursor: pointer;
+    appearance: none;
+    line-height: 1;
+    transition: background-color .15s ease, border-color .15s ease, transform .15s ease;
+}
+
+button.cheer-badge:hover,
+button.cheer-badge:focus-visible {
+    outline: 0;
+    background: rgba(255, 232, 190, .95);
+    border-color: #8a4a1b;
+    transform: rotate(2.4deg) translateY(-1px);
+}
+
 .cheers-block {
     position: relative;
     z-index: 1;
@@ -1059,6 +1074,27 @@ legend {
     color: var(--muted);
     font-size: .7rem;
     font-style: italic;
+}
+
+.cheers-more-button {
+    appearance: none;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-style: italic;
+    text-align: left;
+    cursor: pointer;
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+    transition: color .15s ease;
+}
+
+.cheers-more-button:hover,
+.cheers-more-button:focus-visible {
+    outline: 0;
+    color: var(--ink);
 }
 .profile-landscape {
   position: relative;
@@ -1781,6 +1817,66 @@ body.activity-open {
 .activity-list .empty-activity::before,
 .activity-list.is-empty::before {
   display: none;
+}
+
+.cheers-full-list {
+  padding: 14px 22px 22px;
+  gap: 0;
+}
+
+.cheers-full-list::before {
+  display: none;
+}
+
+.cheers-full-list li {
+  grid-template-columns: 92px 1fr;
+  align-items: baseline;
+  padding: 12px 0;
+  border-bottom: 1px dashed var(--line);
+}
+
+.cheers-full-list li:first-child {
+  padding-top: 4px;
+}
+
+.cheers-full-list li:last-child {
+  border-bottom: 0;
+}
+
+.cheers-full-list li::before {
+  display: none;
+}
+
+.cheers-full-list time {
+  color: var(--muted);
+  font-family: var(--hand);
+  font-size: .82rem;
+  letter-spacing: .02em;
+}
+
+.cheers-full-list .cheer-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--ink);
+  font-size: .94rem;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.cheers-full-list .cheer-from {
+  color: #8a4a1b;
+  font-weight: 700;
+}
+
+.cheers-full-list .empty-activity {
+  grid-template-columns: 1fr;
+  padding: 20px 0;
+  border-bottom: 0;
+}
+
+.cheers-panel {
+  width: min(520px, 100%);
 }
 
 .validation-box {
