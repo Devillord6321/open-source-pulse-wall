@@ -11,6 +11,9 @@ const ALLOWED_AVATARS = new Set(Array.from({ length: 10 }, (_, index) => {
   return `avatars/avatar-${number}.png`;
 }));
 
+const CHEERS_MAX_PER_PROFILE = 50;
+const CHEER_MESSAGE_MAX_LENGTH = 80;
+
 function listProfileFiles() {
   if (!fs.existsSync(PROFILES_DIR)) {
     return [];
@@ -47,6 +50,60 @@ function requiredString(profile, key, label, errors, filename, maxLength = 80) {
   if (value.trim().length > maxLength) {
     errors.push(`${filename}: ${label} 过长，最多 ${maxLength} 个字符`);
   }
+}
+
+function validateCheers(profile, filename, errors) {
+  if (profile.cheers === undefined) return;
+
+  if (!Array.isArray(profile.cheers)) {
+    errors.push(`${filename}: cheers 必须是数组，例如 [{ "from": "octocat", "message": "加油!" }]`);
+    return;
+  }
+
+  if (profile.cheers.length > CHEERS_MAX_PER_PROFILE) {
+    errors.push(`${filename}: cheers 最多 ${CHEERS_MAX_PER_PROFILE} 条，请合并或删减`);
+  }
+
+  const owner = String(profile.github || '').trim().toLowerCase();
+  const seen = new Set();
+
+  profile.cheers.forEach((entry, index) => {
+    const label = `cheers[${index}]`;
+
+    if (!isPlainObject(entry)) {
+      errors.push(`${filename}: ${label} 必须是对象 { from, message }`);
+      return;
+    }
+
+    const fromProblem = validateGithubHandle(entry.from);
+    if (fromProblem) {
+      errors.push(`${filename}: ${label}.from ${fromProblem}`);
+    }
+
+    const fromHandle = String(entry.from || '').trim().toLowerCase();
+    if (owner && fromHandle && fromHandle === owner) {
+      errors.push(`${filename}: ${label}.from 不能是 profile 主人自己（请让别的同学给你加油）`);
+    }
+
+    if (typeof entry.message !== 'string' || entry.message.trim().length === 0) {
+      errors.push(`${filename}: ${label}.message 必须填写`);
+    } else if (entry.message.trim().length > CHEER_MESSAGE_MAX_LENGTH) {
+      errors.push(`${filename}: ${label}.message 过长，最多 ${CHEER_MESSAGE_MAX_LENGTH} 个字符`);
+    }
+
+    if (entry.ts !== undefined) {
+      if (typeof entry.ts !== 'string' || Number.isNaN(Date.parse(entry.ts))) {
+        errors.push(`${filename}: ${label}.ts 必须是 ISO 时间字符串，例如 2026-05-09`);
+      }
+    }
+
+    const dedupeKey = `${fromHandle}|${String(entry.message || '').trim()}`;
+    if (fromHandle && seen.has(dedupeKey)) {
+      errors.push(`${filename}: ${label} 与之前同一作者的同样内容重复，请合并`);
+    } else if (fromHandle) {
+      seen.add(dedupeKey);
+    }
+  });
 }
 
 function validateProfile(profile, filename) {
@@ -103,6 +160,8 @@ function validateProfile(profile, filename) {
       warnings.push(`${filename}: homepage 建议使用 http:// 或 https:// 开头`);
     }
   }
+
+  validateCheers(profile, filename, errors);
 
   const expectedName = `${String(profile.github || '').trim().toLowerCase()}.json`;
   if (profile.github && filename.toLowerCase() !== expectedName) {
@@ -179,5 +238,7 @@ module.exports = {
   validateProfile,
   validateGithubHandle,
   ALLOWED_STYLES,
-  ALLOWED_AVATARS
+  ALLOWED_AVATARS,
+  CHEERS_MAX_PER_PROFILE,
+  CHEER_MESSAGE_MAX_LENGTH
 };

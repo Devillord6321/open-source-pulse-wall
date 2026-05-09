@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 课堂同学群
+    url: https://github.com/
+    about: 一些非常细的小问题（例如「我刚刚是不是按错键了」）建议先在课堂群里问，能更快得到回答。如果是和仓库本身有关的问题，请用上面的模板开 Issue。

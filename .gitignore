@@ -42,3 +42,5 @@ Desktop.ini
 playwright-report/
 test-results/
 screenshots/
+output/playwright/
+.playwright-cli/

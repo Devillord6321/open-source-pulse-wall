@@ -1,16 +1,23 @@
 {
-  "name": "张三",
-  "github": "zhangsan",
-  "role": "前端开发者",
-  "motto": "用代码改变世界",
+  "name": "纳瓦尔",
+  "github": "nawaz",
+  "role": "硅谷投资人",
+  "motto": "如果他人因对你抱有期待而受伤，那就是他们的问题，与你毫无关系。",
   "stack": [
     "React",
     "TypeScript",
     "Node.js",
     "Open Source"
   ],
-  "city": "北京",
+  "city": "印度",
   "style": "sketch",
   "avatar": "avatars/avatar-02.png",
-  "homepage": ""
+  "homepage": "",
+  "cheers": [
+    {
+      "from": "nanzhi84",
+      "message": "示范：第一次合并 PR，节奏稳！",
+      "ts": "2026-05-09"
+    }
+  ]
 }

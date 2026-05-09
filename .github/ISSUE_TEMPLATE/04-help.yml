@@ -1,0 +1,55 @@
+name: 我卡住了，求救
+description: 命令报错、PR 提不上去、被冲突搞晕——都来这里。
+title: "[Help] "
+labels: ["help wanted"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        别慌，把现场情况说清楚就好。求救比一个人在那里 Google 半小时高效得多。
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: 我想做什么
+      placeholder: "我想合并 main 分支到我的 add-your-profile 分支。"
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: 我跑的命令（按顺序）
+      description: 用三个反引号包起来。
+      placeholder: |
+        ```bash
+        git fetch upstream
+        git merge upstream/main
+        ```
+    validations:
+      required: true
+
+  - type: textarea
+    id: error
+    attributes:
+      label: 报错或异常输出
+      description: 完整粘贴，长就长，越完整越好排查。
+      placeholder: |
+        ```
+        CONFLICT (content): Merge conflict in data/profiles/octocat.json
+        Automatic merge failed; fix conflicts and then commit the result.
+        ```
+    validations:
+      required: true
+
+  - type: input
+    id: branch
+    attributes:
+      label: 当前分支名
+      placeholder: "add-your-profile"
+
+  - type: input
+    id: env
+    attributes:
+      label: 环境
+      placeholder: "Windows 10 / Node 20.10 / PowerShell"

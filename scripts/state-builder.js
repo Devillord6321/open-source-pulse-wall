@@ -10,7 +10,11 @@ const ROOT = path.resolve(__dirname, '..');
 const PROFILES_DIR = path.join(ROOT, 'data', 'profiles');
 const GITHUB_API_BASE = 'https://api.github.com';
 const COMMIT_GRAPH_LIMIT = 40;
-const ACTIVITY_FEED_LIMIT = 5;
+const ACTIVITY_FEED_LIMIT = 8;
+const ISSUES_FETCH_LIMIT = 30;
+const PULLS_FETCH_LIMIT = 20;
+const ISSUES_DISPLAY_LIMIT = 10;
+const PULLS_DISPLAY_LIMIT = 10;
 
 function buildUnconfiguredGithubState() {
   return {
@@ -25,6 +29,14 @@ function buildUnconfiguredGithubState() {
     latestCommitAt: '',
     events: [],
     commits: [],
+    issues: [],
+    pullRequests: [],
+    issuesTotal: 0,
+    openIssuesTotal: 0,
+    pullRequestsTotal: 0,
+    awaitingReviewTotal: 0,
+    issuesWarning: '',
+    pullsWarning: '',
     message:
       '未解析到 GitHub 仓库：可设置环境变量 GITHUB_REPOSITORY，在 data/github-sync.json 填写 repository，' +
       '或在 package.json 声明 repository，或在本仓库的 git remote origin 指向 github.com'
@@ -281,12 +293,130 @@ function normalizeCommitNode(commit) {
   };
 }
 
-function normalizeGithubEvent(node) {
+function normalizeIssueNode(node) {
   return {
-    type: 'commit',
-    time: node.time,
-    message: `${node.author}: ${node.message}`
+    number: Number(node.number || 0),
+    title: String(node.title || '').trim(),
+    state: String(node.state || 'open'),
+    isPullRequest: Boolean(node.pull_request),
+    author: String(node.user?.login || 'unknown'),
+    avatarUrl: String(node.user?.avatar_url || ''),
+    profileUrl: String(node.user?.html_url || ''),
+    htmlUrl: String(node.html_url || ''),
+    createdAt: String(node.created_at || ''),
+    updatedAt: String(node.updated_at || ''),
+    closedAt: String(node.closed_at || ''),
+    commentCount: Number(node.comments || 0),
+    labels: Array.isArray(node.labels)
+      ? node.labels.map((label) => ({
+          name: String(label.name || ''),
+          color: String(label.color || '')
+        })).filter((label) => label.name)
+      : []
   };
+}
+
+function normalizePullRequestNode(node) {
+  const reviewers = Array.isArray(node.requested_reviewers) ? node.requested_reviewers : [];
+  const teams = Array.isArray(node.requested_teams) ? node.requested_teams : [];
+  return {
+    number: Number(node.number || 0),
+    title: String(node.title || '').trim(),
+    state: String(node.state || 'open'),
+    draft: Boolean(node.draft),
+    author: String(node.user?.login || 'unknown'),
+    avatarUrl: String(node.user?.avatar_url || ''),
+    profileUrl: String(node.user?.html_url || ''),
+    htmlUrl: String(node.html_url || ''),
+    createdAt: String(node.created_at || ''),
+    updatedAt: String(node.updated_at || ''),
+    requestedReviewers: reviewers.map((reviewer) => ({
+      login: String(reviewer.login || ''),
+      avatarUrl: String(reviewer.avatar_url || ''),
+      profileUrl: String(reviewer.html_url || '')
+    })).filter((reviewer) => reviewer.login),
+    requestedTeams: teams.map((team) => String(team.name || team.slug || '')).filter(Boolean)
+  };
+}
+
+function buildActivityEvents({ commits, issues, pullRequests }) {
+  const events = [];
+
+  commits.forEach((commit) => {
+    events.push({
+      type: 'commit',
+      time: commit.time,
+      author: commit.author,
+      avatarUrl: commit.avatarUrl,
+      htmlUrl: commit.htmlUrl,
+      message: `${commit.author}: ${commit.message}`,
+      key: `commit:${commit.sha}`
+    });
+  });
+
+  issues.filter((item) => !item.isPullRequest).forEach((issue) => {
+    const isClosed = issue.state === 'closed' && issue.closedAt;
+    events.push({
+      type: isClosed ? 'issue_closed' : 'issue_opened',
+      time: isClosed ? issue.closedAt : issue.createdAt,
+      author: issue.author,
+      avatarUrl: issue.avatarUrl,
+      htmlUrl: issue.htmlUrl,
+      message: isClosed
+        ? `@${issue.author} 关闭了 Issue #${issue.number}: ${issue.title}`
+        : `@${issue.author} 提了 Issue #${issue.number}: ${issue.title}`,
+      key: `${isClosed ? 'issue_closed' : 'issue_opened'}:${issue.number}`
+    });
+  });
+
+  issues.filter((item) => item.isPullRequest).forEach((pr) => {
+    const isClosed = pr.state === 'closed' && pr.closedAt;
+    events.push({
+      type: isClosed ? 'pr_closed' : 'pr_opened',
+      time: isClosed ? pr.closedAt : pr.createdAt,
+      author: pr.author,
+      avatarUrl: pr.avatarUrl,
+      htmlUrl: pr.htmlUrl,
+      message: isClosed
+        ? `@${pr.author} 合并/关闭了 PR #${pr.number}: ${pr.title}`
+        : `@${pr.author} 开了 PR #${pr.number}: ${pr.title}`,
+      key: `${isClosed ? 'pr_closed' : 'pr_opened'}:${pr.number}`
+    });
+  });
+
+  pullRequests.forEach((pr) => {
+    if (!pr.requestedReviewers.length && !pr.requestedTeams.length) return;
+    const reviewerNames = [
+      ...pr.requestedReviewers.map((reviewer) => `@${reviewer.login}`),
+      ...pr.requestedTeams.map((team) => `@${team}`)
+    ];
+    events.push({
+      type: 'review_requested',
+      time: pr.updatedAt || pr.createdAt,
+      author: pr.author,
+      avatarUrl: pr.avatarUrl,
+      htmlUrl: pr.htmlUrl,
+      message: `@${pr.author} 请 ${reviewerNames.join('、')} review PR #${pr.number}: ${pr.title}`,
+      key: `review_requested:${pr.number}:${reviewerNames.join(',')}`
+    });
+  });
+
+  events.sort((a, b) => {
+    const at = Date.parse(a.time || '') || 0;
+    const bt = Date.parse(b.time || '') || 0;
+    return bt - at;
+  });
+
+  return events;
+}
+
+async function fetchOptionalCollection(pathname, token) {
+  try {
+    const data = await fetchGithubJson(pathname, token);
+    return { data: Array.isArray(data) ? data : [], warning: '' };
+  } catch (error) {
+    return { data: [], warning: error.message };
+  }
 }
 
 async function fetchGithubState({ repository, token = '' }) {
@@ -299,8 +429,30 @@ async function fetchGithubState({ repository, token = '' }) {
     fetchGithubJson(`/repos/${encodedRepo}/commits?per_page=${COMMIT_GRAPH_LIMIT}`, token)
   ]);
 
+  const [issuesResult, pullsResult] = await Promise.all([
+    fetchOptionalCollection(
+      `/repos/${encodedRepo}/issues?state=all&sort=created&direction=desc&per_page=${ISSUES_FETCH_LIMIT}`,
+      token
+    ),
+    fetchOptionalCollection(
+      `/repos/${encodedRepo}/pulls?state=open&sort=created&direction=desc&per_page=${PULLS_FETCH_LIMIT}`,
+      token
+    )
+  ]);
+
   const commitNodes = Array.isArray(commits) ? commits.map(normalizeCommitNode) : [];
   const latestCommitAt = commitNodes.length ? commitNodes[0].time : '';
+  const issueNodes = issuesResult.data.map(normalizeIssueNode);
+  const pullNodes = pullsResult.data.map(normalizePullRequestNode);
+
+  const pureIssues = issueNodes.filter((item) => !item.isPullRequest);
+  const openIssuesTotal = pureIssues.filter((item) => item.state === 'open').length;
+  const awaitingReviewTotal = pullNodes.filter((pr) => pr.requestedReviewers.length || pr.requestedTeams.length).length;
+  const allEvents = buildActivityEvents({
+    commits: commitNodes,
+    issues: issueNodes,
+    pullRequests: pullNodes
+  });
 
   return {
     configured: true,
@@ -312,8 +464,16 @@ async function fetchGithubState({ repository, token = '' }) {
     htmlUrl: repo.html_url || '',
     pushedAt: repo.pushed_at || '',
     latestCommitAt,
-    events: commitNodes.slice(0, ACTIVITY_FEED_LIMIT).map(normalizeGithubEvent),
+    events: allEvents.slice(0, ACTIVITY_FEED_LIMIT),
     commits: commitNodes,
+    issues: pureIssues.slice(0, ISSUES_DISPLAY_LIMIT),
+    pullRequests: pullNodes.slice(0, PULLS_DISPLAY_LIMIT),
+    issuesTotal: pureIssues.length,
+    openIssuesTotal,
+    pullRequestsTotal: pullNodes.length,
+    awaitingReviewTotal,
+    issuesWarning: issuesResult.warning,
+    pullsWarning: pullsResult.warning,
     message: `已同步 GitHub 仓库 ${repo.full_name || repository}`
   };
 }
@@ -334,6 +494,24 @@ function computeProfilesFingerprint() {
   return crypto.createHash('sha1').update(entries).digest('hex');
 }
 
+function normalizeCheers(rawCheers) {
+  if (!Array.isArray(rawCheers)) return [];
+
+  return rawCheers
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') return null;
+      const from = String(entry.from || '').trim();
+      const message = String(entry.message || '').trim();
+      if (!from || !message) return null;
+      return {
+        from,
+        message,
+        ts: typeof entry.ts === 'string' ? entry.ts : ''
+      };
+    })
+    .filter(Boolean);
+}
+
 function normalizeContributors(contributors) {
   return contributors
     .map((item) => ({
@@ -346,9 +524,35 @@ function normalizeContributors(contributors) {
       style: String(item.style || 'nature').trim(),
       avatar: String(item.avatar || '').trim(),
       homepage: String(item.homepage || '').trim(),
+      cheers: normalizeCheers(item.cheers),
       file: item.file
     }))
     .filter((item) => item.name || item.github);
+}
+
+const RECENT_CHEERS_LIMIT = 12;
+
+function collectRecentCheers(contributors) {
+  const items = [];
+  contributors.forEach((profile) => {
+    profile.cheers.forEach((cheer) => {
+      items.push({
+        to: profile.github || profile.name,
+        toName: profile.name || profile.github,
+        from: cheer.from,
+        message: cheer.message,
+        ts: cheer.ts || ''
+      });
+    });
+  });
+
+  items.sort((a, b) => {
+    const at = Date.parse(a.ts || '') || 0;
+    const bt = Date.parse(b.ts || '') || 0;
+    return bt - at;
+  });
+
+  return items.slice(0, RECENT_CHEERS_LIMIT);
 }
 
 function buildContributorState({ githubState = buildUnconfiguredGithubState(), fallbackContributors = [] } = {}) {
@@ -358,6 +562,8 @@ function buildContributorState({ githubState = buildUnconfiguredGithubState(), f
   const normalized = normalizeContributors(result.contributors);
   const ok = result.errors.length === 0;
   const contributors = ok ? normalized : fallbackContributors;
+  const cheersTotal = normalized.reduce((sum, profile) => sum + profile.cheers.length, 0);
+  const recentCheers = collectRecentCheers(normalized);
 
   return {
     ok,
@@ -366,11 +572,13 @@ function buildContributorState({ githubState = buildUnconfiguredGithubState(), f
     count: contributors.length,
     contributors,
     previewContributors: normalized,
+    cheersTotal,
+    recentCheers,
     github: githubState,
     errors: result.errors,
     warnings: result.warnings,
     message: ok
-      ? `已加载 ${normalized.length} 位贡献者`
+      ? `已加载 ${normalized.length} 位贡献者，累计 ${cheersTotal} 条寄语`
       : '数据校验失败，页面暂时保留上一次有效结果'
   };
 }
