@@ -1,0 +1,22 @@
+{
+  "name": "open-source-pulse-wall",
+  "version": "1.0.0",
+  "description": "A classroom-ready Git and open-source contribution wall with live feedback.",
+  "private": false,
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "validate": "node scripts/validate-contributors.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "git",
+    "open-source",
+    "classroom",
+    "contributors",
+    "sse",
+    "github"
+  ],
+  "author": "Course Host",
+  "license": "MIT"
+}

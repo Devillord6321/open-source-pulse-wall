@@ -1,0 +1,11 @@
+{
+  "name": "Octo Mentor",
+  "github": "octocat",
+  "role": "Course Maintainer",
+  "motto": "Fork it. Branch it. Ship it.",
+  "stack": ["Git", "GitHub", "Review"],
+  "city": "Classroom",
+  "style": "notebook",
+  "avatar": "/avatars/avatar-09.png",
+  "homepage": "https://github.com/octocat"
+}

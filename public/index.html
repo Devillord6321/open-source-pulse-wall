@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Open Source Pulse Wall</title>
+  <meta name="description" content="A live Git classroom project for first-time open-source contributors." />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="paper-grain" aria-hidden="true"></div>
+  <svg class="edge-plant edge-plant-left" viewBox="0 0 160 360" aria-hidden="true">
+    <path d="M86 342 C78 286 84 230 66 184 C50 140 42 92 55 26" />
+    <path d="M69 226 C38 210 22 190 18 164 C45 168 64 186 69 226Z" />
+    <path d="M76 172 C108 152 124 128 126 95 C94 104 78 127 76 172Z" />
+    <path d="M61 118 C33 98 24 72 28 45 C54 55 66 80 61 118Z" />
+    <path d="M82 270 C112 254 132 232 137 202 C108 207 88 232 82 270Z" />
+  </svg>
+  <svg class="paper-plane" viewBox="0 0 260 220" aria-hidden="true">
+    <path class="plane-path" d="M28 160 C72 118 118 214 160 132 C188 80 214 72 238 88" />
+    <path class="plane" d="M184 54 L244 28 L218 92 L204 68 L184 54Z" />
+    <path class="plane-fold" d="M204 68 L244 28" />
+    <path class="plane-fold" d="M204 68 L214 104" />
+  </svg>
+
+  <main class="page-shell">
+    <header class="topbar">
+      <a class="brand" href="#home" aria-label="Open Source Pulse Wall home">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 48 48">
+            <circle cx="24" cy="24" r="20" />
+            <path d="M16 28 C18 18 26 14 36 12 C34 24 27 31 16 28Z" />
+            <path d="M17 28 C23 25 28 21 33 15" />
+            <path d="M18 31 C16 25 14 20 10 16" />
+          </svg>
+        </span>
+        <span>
+          <strong>Open Source Pulse Wall</strong>
+          <small>Classroom Git Project</small>
+        </span>
+      </a>
+      <nav class="topnav" aria-label="页面导航">
+        <a href="#home" class="active">首页</a>
+        <a href="#feedback">实时反馈</a>
+        <a href="#contribute">开始贡献</a>
+        <a href="#wall">贡献墙</a>
+        <a href="#guide">课堂流程</a>
+      </nav>
+      <div class="star-badge" aria-label="课堂星标数量">
+        <span>Star</span>
+        <strong id="starCount">--</strong>
+      </div>
+    </header>
+
+    <section class="hero" id="home">
+      <div class="hero-copy">
+        <h1>Open Source Pulse Wall</h1>
+        <h2>教室里的 Git 开源贡献墙</h2>
+        <p class="hero-text">记录每一次学习、每一次提交、每一次成长。一起用开源让知识产生真实的影响力。</p>
+        <div class="status-cluster">
+          <span class="status-pill">
+            <span class="status-dot" id="connectionDot"></span>
+            <span id="connectionText">正在连接实时反馈通道</span>
+          </span>
+          <span class="sync-note" id="syncNote">等待 GitHub 同步配置</span>
+        </div>
+        <div class="hero-actions">
+          <a class="primary-action" href="#contribute">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19c5-1 9-5 10-10 2 2 4 3 6 3-2-4-5-7-9-9-1 6-4 11-7 16Z" /><path d="M7 17c3-1 5-3 7-6" /></svg>
+            开始贡献
+          </a>
+          <button class="ghost-action" id="copyCloneCommand" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+            复制课堂命令
+          </button>
+        </div>
+      </div>
+
+      <section class="command-card" aria-label="课堂贡献命令">
+        <div class="sketch-caption">课堂贡献命令</div>
+        <div class="command-title">
+          <span>$</span>
+          <small>Bash</small>
+        </div>
+        <pre><code id="terminalCommands"># 1. Fork 本仓库
+git clone <GitHub 仓库地址>
+
+# 2. 创建你的分支
+git checkout -b feat/your-name
+
+# 3. 添加你的个人信息
+npm run add
+
+# 4. 提交并推送
+git add .
+git commit -m "feat: add my profile"
+git push origin feat/your-name
+
+# 5. 创建 Pull Request
+# 到 main 分支，等待 Review & Merge</code></pre>
+        <p class="tip-line">小贴士：提交后，你的卡片将自动出现在贡献者墙。</p>
+      </section>
+    </section>
+
+    <section class="feedback-panel" id="feedback" aria-label="实时反馈">
+      <div class="feedback-left">
+        <div class="panel-title-row">
+          <h2>实时反馈</h2>
+          <span><i></i> 实时更新中</span>
+        </div>
+        <div class="stats-row">
+          <article class="stat-card">
+            <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M16 23a7 7 0 1 0 0-14 7 7 0 0 0 0 14ZM32 23a7 7 0 1 0 0-14 7 7 0 0 0 0 14ZM7 40c1-8 6-12 13-12s12 4 13 12M25 40c1-6 5-10 11-10 4 0 7 2 9 6" /></svg>
+            <div><strong id="statCount">0</strong><span>贡献者</span><small id="statCountNote">等待 GitHub 同步</small></div>
+          </article>
+          <article class="stat-card">
+            <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 5 40 12v12c0 10-7 17-16 21C15 41 8 34 8 24V12L24 5Z" /><path d="m16 24 6 6 12-14" /></svg>
+            <div><strong id="statValidation">...</strong><span>验证通过</span><small>所有提交均已通过</small></div>
+          </article>
+          <article class="stat-card">
+            <svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="17" /><path d="M24 12v13l9 5" /></svg>
+            <div><strong id="statPulse">...</strong><span>最后更新</span><small id="statStacks">0 个技术标签</small></div>
+          </article>
+        </div>
+      </div>
+      <aside class="feed-box">
+        <div class="feed-head">
+          <strong>最近活动</strong>
+          <span>查看全部</span>
+        </div>
+        <ol id="liveFeed"></ol>
+      </aside>
+    </section>
+
+    <section class="builder" id="contribute">
+      <form class="builder-form" id="profileForm">
+        <div class="builder-heading">
+          <h2>构建你的个人卡片</h2>
+          <p>填写信息，选择头像，生成你的专属贡献卡片。</p>
+        </div>
+        <label>
+          名字 *
+          <input id="inputName" name="name" type="text" value="张三" maxlength="40" placeholder="例如：张三" />
+        </label>
+        <label>
+          GitHub 用户名 *
+          <input id="inputGithub" name="github" type="text" value="zhangsan" maxlength="39" placeholder="例如：zhangsan" />
+        </label>
+        <label>
+          角色 *
+          <select id="inputRole" name="role">
+            <option value="前端开发者">前端开发者</option>
+            <option value="后端开发者">后端开发者</option>
+            <option value="全栈工程师">全栈工程师</option>
+            <option value="UI/UX 设计师">UI/UX 设计师</option>
+            <option value="数据工程师">数据工程师</option>
+            <option value="开源贡献者">开源贡献者</option>
+          </select>
+        </label>
+        <label>
+          一句话宣言 *
+          <input id="inputMotto" name="motto" type="text" value="用代码改变世界" maxlength="120" placeholder="例如：用代码改变世界" />
+        </label>
+        <label>
+          技术标签 *
+          <input id="inputStack" name="stack" type="text" value="React, TypeScript, Node.js, Open Source" placeholder="例如：React, Node.js, Python" />
+        </label>
+        <label>
+          城市 *
+          <input id="inputCity" name="city" type="text" value="北京" maxlength="40" placeholder="例如：北京" />
+        </label>
+        <fieldset class="style-options">
+          <legend>风格 *</legend>
+          <label><input type="radio" name="style" value="minimal" /> 简约</label>
+          <label><input type="radio" name="style" value="nature" checked /> 自然</label>
+          <label><input type="radio" name="style" value="sketch" /> 手绘</label>
+          <label><input type="radio" name="style" value="sage" /> 极客</label>
+        </fieldset>
+        <fieldset class="avatar-options">
+          <legend>头像 *</legend>
+          <div id="avatarPicker"></div>
+        </fieldset>
+        <button class="submit-card" id="copyJson" type="button">预览我的卡片</button>
+      </form>
+
+      <aside class="preview-panel">
+        <div class="panel-heading">
+          <h2>实时预览</h2>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></svg>
+        </div>
+        <div id="profilePreview"></div>
+        <p class="preview-note">卡片样式将随信息与头像自动调整</p>
+      </aside>
+
+      <aside class="json-panel">
+        <div class="panel-heading">
+          <h2>JSON 预览</h2>
+          <span>{ }</span>
+        </div>
+        <pre class="json-preview"><code id="jsonPreview"></code></pre>
+        <button class="copy-json" id="copyFilename" type="button">复制文件名</button>
+      </aside>
+    </section>
+
+    <section class="wall-section" id="wall">
+      <div class="section-head inline-head">
+        <h2>贡献者墙</h2>
+        <a href="#wall" class="text-link">全部贡献者</a>
+      </div>
+      <div class="wall" id="contributorsWall"></div>
+    </section>
+
+    <section class="steps" id="guide">
+      <div class="section-head">
+        <h2>课堂流程</h2>
+      </div>
+      <div class="step-list">
+        <article>
+          <span>1</span>
+          <h3>Fork 与 Clone</h3>
+          <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 8v20M14 8v14c0 3 2 6 6 6s6-3 6-6V8M20 28v26M42 10v18c0 6-4 10-10 10h-6" /></svg>
+          <p>Fork 本仓库到你的 GitHub，并 Clone 到本地。</p>
+        </article>
+        <article>
+          <span>2</span>
+          <h3>Branch 与 Commit</h3>
+          <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M18 12v40M18 22c14 0 14 18 28 18M46 40v12M18 22h24M18 52h24" /><circle cx="18" cy="12" r="5" /><circle cx="46" cy="40" r="5" /><circle cx="18" cy="52" r="5" /></svg>
+          <p>创建个人分支，添加你的信息并提交 Commit。</p>
+        </article>
+        <article>
+          <span>3</span>
+          <h3>Push 与 Pull Request</h3>
+          <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M18 42h28c8 0 12-5 12-11s-5-11-12-11c-3-8-10-12-18-10-7 2-11 7-12 14-6 1-10 5-10 11 0 5 4 7 12 7Z" /><path d="M32 46V26M24 34l8-8 8 8" /></svg>
+          <p>推送到远程仓库，并创建 Pull Request 到 main 分支。</p>
+        </article>
+        <article>
+          <span>4</span>
+          <h3>Review 与 Merge</h3>
+          <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M10 14h44v26H30L18 52V40H10V14Z" /><path d="M20 25h24M20 33h16" /></svg>
+          <p>通过代码审查，合并后你的卡片展示在贡献墙。</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="about" id="about">
+      <p>© 2024 Open Source Pulse Wall · 让学习被看见，让贡献被记住。</p>
+    </section>
+  </main>
+
+  <div class="validation-box" id="validationBox" aria-live="polite"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/app.js"></script>
+</body>
+</html>
