@@ -1,6 +1,6 @@
 # Open Source Pulse Wall
 
-一个课堂上可以完成的 Git 开源贡献小项目。学生通过 Fork、Clone、Branch、Commit、Push、Pull Request 完成第一次开源贡献。老师运行本地实时看板后，只要 `data/profiles` 里的贡献者文件发生变化，页面会自动刷新并给出校验反馈。
+一个课堂上可以完成的 Git 开源贡献小项目。学生通过 Fork、Clone、Branch、Commit、Push、Pull Request 完成第一次开源贡献。老师可以本地运行实时看板，也可以用 GitHub Pages 发布静态贡献墙；只要 `data/profiles` 里的贡献者文件合并到 `main`，页面会在下一次 Pages 构建后更新。
 
 新版前端采用手绘高级极简风格，包含纸张质感、铅笔线条、贡献者卡片、实时活动流、Profile Builder 和 JSON 预览，适合直接投影到课堂上使用。
 
@@ -18,6 +18,7 @@ Fork -> Clone -> Branch -> Edit -> Validate -> Commit -> Push -> Pull Request ->
 2. `npm run validate` 会在本地检查字段和 JSON 格式。
 3. GitHub Actions 会在 PR 上自动校验。
 4. 老师本地运行 `npm start` 后，合并或拉取新 profile 文件时，贡献者墙会实时刷新。
+5. GitHub Pages 会在 `main` 更新后重新构建静态页面。
 
 ## 老师 3 分钟启动
 
@@ -31,7 +32,7 @@ npm start
 打开：
 
 ```text
-http://localhost:3000
+http://localhost:3008
 ```
 
 这个项目没有运行时依赖，不需要 `npm install`。只要电脑有 Node.js 18 或更高版本即可。
@@ -51,6 +52,18 @@ git branch -M main
 git remote add origin https://github.com/YOUR_NAME/open-source-pulse-wall.git
 git push -u origin main
 ```
+
+## GitHub Pages 发布
+
+仓库使用 GitHub Actions 发布静态页面。`main` 分支更新后，workflow 会运行校验、生成 `dist/contributors.json`，再把 `public/` 里的静态资源一起发布到 Pages。
+
+本仓库的 Pages 地址是：
+
+```text
+https://nanzhi84.github.io/open-source-pulse-wall/
+```
+
+如果复制成自己的课堂仓库，需要在 GitHub 仓库设置里把 Pages 发布源切到 GitHub Actions。
 
 ## 学生贡献流程
 
@@ -114,6 +127,7 @@ data/profiles/yoryon.json
   "stack": ["Git", "Open Source"],
   "city": "Beijing",
   "style": "nature",
+  "avatar": "avatars/avatar-01.png",
   "homepage": ""
 }
 ```

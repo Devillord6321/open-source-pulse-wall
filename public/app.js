@@ -3,12 +3,13 @@ const state = {
   knownGithubEvents: new Set(),
   feed: [],
   lastOk: null,
-  fallbackTimer: null
+  fallbackTimer: null,
+  dataMode: ''
 };
 
 const AVATARS = Array.from({ length: 10 }, (_, index) => {
   const number = String(index + 1).padStart(2, '0');
-  return `/avatars/avatar-${number}.png`;
+  return `avatars/avatar-${number}.png`;
 });
 
 const styles = ['minimal', 'nature', 'sketch', 'notebook', 'ink', 'sage'];
@@ -208,9 +209,7 @@ function cardMarkup(profile, options = {}) {
 function updateStats(payload) {
   const contributors = payload.contributors || [];
   const github = payload.github || {};
-  const contributorCount = github.ok && Number.isFinite(Number(github.contributorCount))
-    ? Number(github.contributorCount)
-    : contributors.length;
+  const contributorCount = contributors.length;
   const stackSet = new Set();
   contributors.forEach((person) => {
     (person.stack || []).forEach((tag) => stackSet.add(String(tag).trim().toLowerCase()));
@@ -218,7 +217,7 @@ function updateStats(payload) {
 
   if (elements.statCount) elements.statCount.textContent = contributorCount;
   if (elements.statCountNote) {
-    elements.statCountNote.textContent = github.ok ? 'GitHub contributors' : '本地 profile 数量';
+    elements.statCountNote.textContent = github.ok ? 'profile JSON 数量' : '本地 profile 数量';
   }
   if (elements.statValidation) elements.statValidation.textContent = payload.ok ? '100%' : '待修复';
   if (elements.statStacks) elements.statStacks.textContent = `${stackSet.size} 个技术标签`;
@@ -310,13 +309,35 @@ function applyState(payload) {
   state.lastOk = payload.ok;
 }
 
+function dataSourceMode() {
+  return document.querySelector('meta[name="app-data-source"]')?.getAttribute('content') || 'auto';
+}
+
 async function fetchState() {
-  const response = await fetch('/api/contributors', { cache: 'no-store' });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return response.json();
+  const endpoints = dataSourceMode() === 'static' ? [
+    { url: 'contributors.json', mode: 'static' }
+  ] : [
+    { url: 'api/contributors', mode: 'api' },
+    { url: 'contributors.json', mode: 'static' }
+  ];
+  let lastError = null;
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await fetch(endpoint.url, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`${endpoint.url} HTTP ${response.status}`);
+      state.dataMode = endpoint.mode;
+      return response.json();
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error('No contributor data source is available');
 }
 
 function startFallbackPolling() {
+  if (state.dataMode === 'static') return;
   if (state.fallbackTimer) return;
   state.fallbackTimer = window.setInterval(async () => {
     try {
@@ -329,13 +350,19 @@ function startFallbackPolling() {
 }
 
 function connectEvents() {
+  if (state.dataMode === 'static') {
+    setConnection('online', '静态页面已加载，随 GitHub Pages 构建更新');
+    addFeed('静态页面已加载，合并 main 后自动发布');
+    return;
+  }
+
   if (!('EventSource' in window)) {
     setConnection('offline', '浏览器不支持 SSE，改用轮询模式');
     startFallbackPolling();
     return;
   }
 
-  const source = new EventSource('/events');
+  const source = new EventSource('events');
 
   source.addEventListener('open', () => {
     setConnection('online', '实时反馈通道已连接');
@@ -467,10 +494,12 @@ function bindBuilder() {
 }
 
 bindBuilder();
-connectEvents();
 
 fetchState()
-  .then(applyState)
+  .then((payload) => {
+    applyState(payload);
+    connectEvents();
+  })
   .catch(() => {
-    setConnection('offline', '无法读取初始数据，请确认 npm start 正在运行');
+    setConnection('offline', '无法读取贡献者数据');
   });

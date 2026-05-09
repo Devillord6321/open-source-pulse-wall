@@ -3,16 +3,18 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
-const { readAndValidateAll } = require('./scripts/validate-contributors');
+const {
+  buildUnconfiguredGithubState,
+  fetchGithubState,
+  computeProfilesFingerprint,
+  buildContributorState
+} = require('./scripts/state-builder');
 
 const PORT = Number(process.env.PORT || 3008);
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, 'public');
-const PROFILES_DIR = path.join(ROOT, 'data', 'profiles');
 const POLL_INTERVAL_MS = 700;
 const GITHUB_SYNC_INTERVAL_MS = 60000;
-const GITHUB_API_BASE = 'https://api.github.com';
 const GITHUB_REPOSITORY = String(process.env.GITHUB_REPOSITORY || '').trim();
 const GITHUB_TOKEN = String(process.env.GITHUB_TOKEN || '').trim();
 
@@ -22,104 +24,12 @@ let lastFingerprint = '';
 let githubState = buildUnconfiguredGithubState();
 let currentState = buildState();
 
-function buildUnconfiguredGithubState() {
-  return {
-    configured: false,
-    ok: false,
-    repository: '',
-    stars: null,
-    contributorCount: null,
-    cloneUrl: '',
-    htmlUrl: '',
-    pushedAt: '',
-    latestCommitAt: '',
-    events: [],
-    message: '未配置 GITHUB_REPOSITORY，无法与 GitHub 真实同步'
-  };
-}
-
-function buildGithubHeaders() {
-  const headers = {
-    'Accept': 'application/vnd.github+json',
-    'User-Agent': 'open-source-pulse-wall',
-    'X-GitHub-Api-Version': '2022-11-28'
-  };
-
-  if (GITHUB_TOKEN) {
-    headers.Authorization = `Bearer ${GITHUB_TOKEN}`;
-  }
-
-  return headers;
-}
-
-function assertGithubRepository(value) {
-  if (!value) {
-    throw new Error('需要配置 GITHUB_REPOSITORY 才能与 GitHub 真实同步，例如 owner/repo');
-  }
-
-  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value)) {
-    throw new Error('GITHUB_REPOSITORY 必须使用 owner/repo 格式');
-  }
-}
-
-async function fetchGithubJson(pathname) {
-  const response = await fetch(`${GITHUB_API_BASE}${pathname}`, {
-    headers: buildGithubHeaders()
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`GitHub API ${response.status}: ${body.slice(0, 240)}`);
-  }
-
-  return response.json();
-}
-
-function pickCommitTime(commit) {
-  return commit?.commit?.committer?.date || commit?.commit?.author?.date || '';
-}
-
-function normalizeGithubEvent(commit) {
-  const author = commit.author?.login || commit.commit?.author?.name || 'unknown';
-  const message = String(commit.commit?.message || 'Commit').split('\n')[0];
-
-  return {
-    type: 'commit',
-    time: pickCommitTime(commit),
-    message: `${author}: ${message}`
-  };
-}
-
-async function fetchGithubState() {
-  assertGithubRepository(GITHUB_REPOSITORY);
-
-  const encodedRepo = GITHUB_REPOSITORY.split('/').map(encodeURIComponent).join('/');
-  const [repo, contributors, commits] = await Promise.all([
-    fetchGithubJson(`/repos/${encodedRepo}`),
-    fetchGithubJson(`/repos/${encodedRepo}/contributors?per_page=100`),
-    fetchGithubJson(`/repos/${encodedRepo}/commits?per_page=5`)
-  ]);
-
-  const latestCommitAt = Array.isArray(commits) && commits.length ? pickCommitTime(commits[0]) : '';
-
-  return {
-    configured: true,
-    ok: true,
-    repository: repo.full_name || GITHUB_REPOSITORY,
-    stars: Number(repo.stargazers_count || 0),
-    contributorCount: Array.isArray(contributors) ? contributors.length : 0,
-    cloneUrl: repo.clone_url || '',
-    htmlUrl: repo.html_url || '',
-    pushedAt: repo.pushed_at || '',
-    latestCommitAt,
-    events: Array.isArray(commits) ? commits.map(normalizeGithubEvent) : [],
-    message: `已同步 GitHub 仓库 ${repo.full_name || GITHUB_REPOSITORY}`
-  };
-}
-
 async function refreshGithubSync() {
   try {
-    githubState = await fetchGithubState();
+    githubState = await fetchGithubState({
+      repository: GITHUB_REPOSITORY,
+      token: GITHUB_TOKEN
+    });
   } catch (error) {
     githubState = {
       ...githubState,
@@ -140,60 +50,17 @@ async function refreshGithubSync() {
   });
 }
 
-function computeFingerprint() {
-  if (!fs.existsSync(PROFILES_DIR)) return 'missing';
-
-  const entries = fs.readdirSync(PROFILES_DIR)
-    .filter((file) => file.endsWith('.json'))
-    .sort()
-    .map((file) => {
-      const fullPath = path.join(PROFILES_DIR, file);
-      const stat = fs.statSync(fullPath);
-      return `${file}:${stat.size}:${stat.mtimeMs}`;
-    })
-    .join('|');
-
-  return crypto.createHash('sha1').update(entries).digest('hex');
-}
-
 function buildState() {
-  const generatedAt = new Date().toISOString();
-  const fingerprint = computeFingerprint();
-  const result = readAndValidateAll();
-  const normalized = result.contributors
-    .map((item) => ({
-      name: String(item.name || '').trim(),
-      github: String(item.github || '').trim(),
-      role: String(item.role || 'Contributor').trim(),
-      motto: String(item.motto || '').trim(),
-      stack: Array.isArray(item.stack) ? item.stack.map((tag) => String(tag).trim()).filter(Boolean) : [],
-      city: String(item.city || '').trim(),
-      style: String(item.style || 'nature').trim(),
-      avatar: String(item.avatar || '').trim(),
-      homepage: String(item.homepage || '').trim(),
-      file: item.file
-    }))
-    .filter((item) => item.name || item.github);
+  const state = buildContributorState({
+    githubState,
+    fallbackContributors: lastGoodContributors
+  });
 
-  const ok = result.errors.length === 0;
-  if (ok) {
-    lastGoodContributors = normalized;
+  if (state.ok) {
+    lastGoodContributors = state.contributors;
   }
 
-  return {
-    ok,
-    generatedAt,
-    fingerprint,
-    count: ok ? normalized.length : lastGoodContributors.length,
-    contributors: ok ? normalized : lastGoodContributors,
-    previewContributors: normalized,
-    github: githubState,
-    errors: result.errors,
-    warnings: result.warnings,
-    message: ok
-      ? `已加载 ${normalized.length} 位贡献者`
-      : `数据校验失败，页面暂时保留上一次有效结果`
-  };
+  return state;
 }
 
 function sendSse(res, event, payload) {
@@ -289,7 +156,7 @@ function handleRequest(req, res) {
 
 function pollForChanges() {
   try {
-    const nextFingerprint = computeFingerprint();
+    const nextFingerprint = computeProfilesFingerprint();
     if (nextFingerprint !== lastFingerprint) {
       lastFingerprint = nextFingerprint;
       currentState = buildState();
@@ -309,6 +176,7 @@ function pollForChanges() {
       previewContributors: [],
       errors: [`服务读取数据失败: ${error.message}`],
       warnings: [],
+      github: githubState,
       message: '服务读取数据失败，页面暂时保留上一次有效结果'
     };
     currentState = payload;
@@ -316,7 +184,7 @@ function pollForChanges() {
   }
 }
 
-lastFingerprint = computeFingerprint();
+lastFingerprint = computeProfilesFingerprint();
 
 const server = http.createServer(handleRequest);
 server.listen(PORT, () => {

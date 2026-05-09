@@ -7,6 +7,7 @@
   "scripts": {
     "start": "node server.js",
     "validate": "node scripts/validate-contributors.js",
+    "build:pages": "node scripts/build-static-site.js",
     "dev": "node server.js"
   },
   "keywords": [

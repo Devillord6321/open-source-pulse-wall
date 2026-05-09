@@ -8,7 +8,7 @@ const PROFILES_DIR = path.join(ROOT, 'data', 'profiles');
 const ALLOWED_STYLES = new Set(['minimal', 'nature', 'sketch', 'notebook', 'ink', 'sage']);
 const ALLOWED_AVATARS = new Set(Array.from({ length: 10 }, (_, index) => {
   const number = String(index + 1).padStart(2, '0');
-  return `/avatars/avatar-${number}.png`;
+  return `avatars/avatar-${number}.png`;
 }));
 
 function listProfileFiles() {

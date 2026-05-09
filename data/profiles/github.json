@@ -6,6 +6,6 @@
   "stack": ["SSE", "JSON", "Automation"],
   "city": "Realtime Node",
   "style": "ink",
-  "avatar": "/avatars/avatar-05.png",
+  "avatar": "avatars/avatar-05.png",
   "homepage": "https://github.com/github"
 }
