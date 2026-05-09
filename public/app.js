@@ -1,10 +1,14 @@
+const MAX_FEED_ITEMS = 30;
+const VISIBLE_FEED_ITEMS = 5;
+
 const state = {
   knownHandles: new Set(),
   knownGithubEvents: new Set(),
   feed: [],
   lastOk: null,
   fallbackTimer: null,
-  dataMode: ''
+  dataMode: '',
+  activityReturnFocus: null
 };
 
 const AVATARS = Array.from({ length: 10 }, (_, index) => {
@@ -37,7 +41,13 @@ const elements = {
   copyFilename: $('#copyFilename'),
   copyCloneCommand: $('#copyCloneCommand'),
   terminalCommands: $('#terminalCommands'),
-  avatarPicker: $('#avatarPicker')
+  avatarPicker: $('#avatarPicker'),
+  viewAllFeed: $('#viewAllFeed'),
+  activityOverlay: $('#activityOverlay'),
+  activityPanel: $('#activityPanel'),
+  activityList: $('#activityList'),
+  activityCount: $('#activityCount'),
+  closeActivity: $('#closeActivity')
 };
 
 const formFields = {
@@ -76,14 +86,35 @@ function toast(message) {
   toast.timer = window.setTimeout(() => elements.toast.classList.remove('show'), 2100);
 }
 
-function addFeed(message, time = new Date().toISOString()) {
-  if (!elements.liveFeed) return;
-
-  state.feed.unshift({ message, time });
-  state.feed = state.feed.slice(0, 5);
-  elements.liveFeed.innerHTML = state.feed
+function feedMarkup(items) {
+  return items
     .map((item) => `<li><time>${formatTime(item.time)}</time><span>${htmlEscape(item.message)}</span></li>`)
     .join('');
+}
+
+function renderFeed() {
+  if (elements.liveFeed) {
+    elements.liveFeed.innerHTML = feedMarkup(state.feed.slice(0, VISIBLE_FEED_ITEMS));
+  }
+
+  if (elements.activityList) {
+    elements.activityList.classList.toggle('is-empty', !state.feed.length);
+    elements.activityList.innerHTML = state.feed.length
+      ? feedMarkup(state.feed)
+      : '<li class="empty-activity"><span>暂无活动记录</span></li>';
+  }
+
+  if (elements.activityCount) {
+    elements.activityCount.textContent = state.feed.length
+      ? `已记录 ${state.feed.length} 条课堂活动`
+      : '等待活动记录';
+  }
+}
+
+function addFeed(message, time = new Date().toISOString()) {
+  state.feed.unshift({ message, time });
+  state.feed = state.feed.slice(0, MAX_FEED_ITEMS);
+  renderFeed();
 }
 
 function formatNumber(value) {
@@ -391,6 +422,51 @@ function connectEvents() {
   });
 }
 
+function openActivityPanel() {
+  if (!elements.activityOverlay || !elements.activityPanel) return;
+
+  state.activityReturnFocus = document.activeElement;
+  renderFeed();
+  elements.activityOverlay.hidden = false;
+  if (elements.viewAllFeed) elements.viewAllFeed.setAttribute('aria-expanded', 'true');
+  document.body.classList.add('activity-open');
+  elements.activityPanel.focus();
+}
+
+function closeActivityPanel() {
+  if (!elements.activityOverlay) return;
+
+  elements.activityOverlay.hidden = true;
+  if (elements.viewAllFeed) elements.viewAllFeed.setAttribute('aria-expanded', 'false');
+  document.body.classList.remove('activity-open');
+
+  if (state.activityReturnFocus && typeof state.activityReturnFocus.focus === 'function') {
+    state.activityReturnFocus.focus();
+  }
+}
+
+function bindActivityPanel() {
+  if (elements.viewAllFeed) {
+    elements.viewAllFeed.addEventListener('click', openActivityPanel);
+  }
+
+  if (elements.closeActivity) {
+    elements.closeActivity.addEventListener('click', closeActivityPanel);
+  }
+
+  if (elements.activityOverlay) {
+    elements.activityOverlay.addEventListener('click', (event) => {
+      if (event.target === elements.activityOverlay) closeActivityPanel();
+    });
+  }
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && elements.activityOverlay && !elements.activityOverlay.hidden) {
+      closeActivityPanel();
+    }
+  });
+}
+
 function selectedStyle() {
   return $('input[name="style"]:checked')?.value || 'nature';
 }
@@ -494,6 +570,8 @@ function bindBuilder() {
 }
 
 bindBuilder();
+bindActivityPanel();
+renderFeed();
 
 fetchState()
   .then((payload) => {

@@ -128,7 +128,7 @@ git push origin feat/your-name
       <aside class="feed-box">
         <div class="feed-head">
           <strong>最近活动</strong>
-          <span>查看全部</span>
+          <button class="view-all-feed" id="viewAllFeed" type="button" aria-haspopup="dialog" aria-controls="activityPanel" aria-expanded="false">查看全部</button>
         </div>
         <ol id="liveFeed"></ol>
       </aside>
@@ -248,6 +248,21 @@ git push origin feat/your-name
       <p>© 2024 Open Source Pulse Wall · 让学习被看见，让贡献被记住。</p>
     </section>
   </main>
+
+  <div class="activity-overlay" id="activityOverlay" hidden>
+    <section class="activity-panel" id="activityPanel" role="dialog" aria-modal="true" aria-labelledby="activityTitle" tabindex="-1">
+      <div class="activity-panel-head">
+        <div>
+          <h2 id="activityTitle">全部活动</h2>
+          <p id="activityCount">等待活动记录</p>
+        </div>
+        <button class="activity-close" id="closeActivity" type="button" aria-label="关闭全部活动">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+        </button>
+      </div>
+      <ol class="activity-list" id="activityList"></ol>
+    </section>
+  </div>
 
   <div class="validation-box" id="validationBox" aria-live="polite"></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
