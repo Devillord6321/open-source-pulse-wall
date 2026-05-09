@@ -1,5 +1,7 @@
 const MAX_FEED_ITEMS = 30;
 const VISIBLE_FEED_ITEMS = 5;
+const WALL_PREVIEW_LIMIT = 10;
+const WALL_PAGE_SIZE = 20;
 
 const state = {
   knownHandles: new Set(),
@@ -8,7 +10,10 @@ const state = {
   lastOk: null,
   fallbackTimer: null,
   dataMode: '',
-  activityReturnFocus: null
+  activityReturnFocus: null,
+  wallContributors: [],
+  wallExpanded: false,
+  wallVisibleCount: WALL_PREVIEW_LIMIT
 };
 
 const AVATARS = Array.from({ length: 10 }, (_, index) => {
@@ -47,7 +52,14 @@ const elements = {
   activityPanel: $('#activityPanel'),
   activityList: $('#activityList'),
   activityCount: $('#activityCount'),
-  closeActivity: $('#closeActivity')
+  closeActivity: $('#closeActivity'),
+  wallSummary: $('#wallSummary'),
+  toggleWallMode: $('#toggleWallMode'),
+  wallControls: $('#wallControls'),
+  wallSearch: $('#wallSearch'),
+  wallFilterStatus: $('#wallFilterStatus'),
+  clearWallSearch: $('#clearWallSearch'),
+  loadMoreWall: $('#loadMoreWall')
 };
 
 const formFields = {
@@ -280,20 +292,117 @@ function updateValidation(payload) {
   box.classList.add('show');
 }
 
-function updateWall(payload) {
+function sortContributors(contributors) {
+  return contributors
+    .slice()
+    .sort((a, b) => String(a.github || a.name).localeCompare(String(b.github || b.name)));
+}
+
+function wallSearchText(profile) {
+  return [
+    profile.name,
+    profile.github,
+    profile.role,
+    profile.motto,
+    profile.city,
+    profile.file,
+    ...(Array.isArray(profile.stack) ? profile.stack : [])
+  ]
+    .map((value) => String(value || '').toLowerCase())
+    .join(' ');
+}
+
+function currentWallQuery() {
+  return String(elements.wallSearch?.value || '').trim().toLowerCase();
+}
+
+function filteredWallContributors() {
+  const query = currentWallQuery();
+  if (!query) return state.wallContributors;
+
+  return state.wallContributors.filter((profile) => wallSearchText(profile).includes(query));
+}
+
+function updateWallMeta({ total, filtered, visible, query }) {
+  if (elements.wallSummary) {
+    if (!total) {
+      elements.wallSummary.textContent = '等待同学提交 profile';
+    } else if (state.wallExpanded && query) {
+      elements.wallSummary.textContent = `筛选出 ${filtered} / ${total} 位贡献者`;
+    } else if (state.wallExpanded) {
+      elements.wallSummary.textContent = `完整列表 ${visible} / ${total} 位贡献者`;
+    } else {
+      elements.wallSummary.textContent = total > WALL_PREVIEW_LIMIT
+        ? `预览展示 ${Math.min(WALL_PREVIEW_LIMIT, total)} / ${total} 位贡献者`
+        : `展示全部 ${total} 位贡献者`;
+    }
+  }
+
+  if (elements.wallFilterStatus) {
+    elements.wallFilterStatus.textContent = query
+      ? `匹配 ${filtered} 位贡献者`
+      : `共 ${total} 位贡献者`;
+  }
+
+  if (elements.toggleWallMode) {
+    elements.toggleWallMode.textContent = state.wallExpanded ? '收起列表' : '全部贡献者';
+    elements.toggleWallMode.setAttribute('aria-expanded', String(state.wallExpanded));
+  }
+
+  if (elements.wallControls) {
+    elements.wallControls.hidden = !state.wallExpanded;
+  }
+
+  if (elements.clearWallSearch) {
+    elements.clearWallSearch.hidden = !query;
+  }
+
+  if (elements.loadMoreWall) {
+    const remaining = filtered - visible;
+    elements.loadMoreWall.hidden = !state.wallExpanded || remaining <= 0;
+    elements.loadMoreWall.textContent = remaining > 0
+      ? `加载更多 ${Math.min(WALL_PAGE_SIZE, remaining)} 位`
+      : '已显示全部';
+  }
+}
+
+function renderWall() {
   if (!elements.wall) return;
 
-  const contributors = payload.contributors || [];
+  const total = state.wallContributors.length;
+  const query = currentWallQuery();
+  const filtered = filteredWallContributors();
+  const limit = state.wallExpanded ? state.wallVisibleCount : WALL_PREVIEW_LIMIT;
+  const visible = filtered.slice(0, Math.min(limit, filtered.length));
 
-  if (!contributors.length) {
+  updateWallMeta({
+    total,
+    filtered: filtered.length,
+    visible: visible.length,
+    query
+  });
+
+  if (!total) {
     elements.wall.innerHTML = '<div class="empty-wall">还没有贡献者。复制模板，创建你的 profile 文件，然后运行 npm run validate。</div>';
     return;
   }
 
-  elements.wall.innerHTML = contributors
-    .sort((a, b) => String(a.github || a.name).localeCompare(String(b.github || b.name)))
+  if (!visible.length) {
+    elements.wall.innerHTML = '<div class="empty-wall">没有匹配的贡献者。换一个关键词试试。</div>';
+    return;
+  }
+
+  elements.wall.innerHTML = visible
     .map((profile) => cardMarkup(profile))
     .join('');
+}
+
+function updateWall(payload) {
+  if (!elements.wall) return;
+
+  state.wallContributors = sortContributors(payload.contributors || []);
+  if (!state.wallExpanded) state.wallVisibleCount = WALL_PREVIEW_LIMIT;
+  renderWall();
 }
 
 function detectNewContributors(payload) {
@@ -467,6 +576,56 @@ function bindActivityPanel() {
   });
 }
 
+function setWallExpanded(expanded) {
+  state.wallExpanded = expanded;
+
+  if (expanded) {
+    state.wallVisibleCount = Math.max(state.wallVisibleCount, WALL_PAGE_SIZE);
+  } else {
+    state.wallVisibleCount = WALL_PREVIEW_LIMIT;
+    if (elements.wallSearch) elements.wallSearch.value = '';
+  }
+
+  renderWall();
+
+  if (expanded && elements.wallSearch) {
+    elements.wallSearch.focus();
+  }
+}
+
+function bindWallControls() {
+  if (elements.toggleWallMode) {
+    elements.toggleWallMode.addEventListener('click', () => {
+      setWallExpanded(!state.wallExpanded);
+    });
+  }
+
+  if (elements.wallSearch) {
+    elements.wallSearch.addEventListener('input', () => {
+      state.wallVisibleCount = WALL_PAGE_SIZE;
+      renderWall();
+    });
+  }
+
+  if (elements.clearWallSearch) {
+    elements.clearWallSearch.addEventListener('click', () => {
+      if (elements.wallSearch) {
+        elements.wallSearch.value = '';
+        elements.wallSearch.focus();
+      }
+      state.wallVisibleCount = WALL_PAGE_SIZE;
+      renderWall();
+    });
+  }
+
+  if (elements.loadMoreWall) {
+    elements.loadMoreWall.addEventListener('click', () => {
+      state.wallVisibleCount += WALL_PAGE_SIZE;
+      renderWall();
+    });
+  }
+}
+
 function selectedStyle() {
   return $('input[name="style"]:checked')?.value || 'nature';
 }
@@ -571,6 +730,7 @@ function bindBuilder() {
 
 bindBuilder();
 bindActivityPanel();
+bindWallControls();
 renderFeed();
 
 fetchState()

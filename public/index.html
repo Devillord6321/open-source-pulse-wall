@@ -206,10 +206,27 @@ git push origin feat/your-name
 
     <section class="wall-section" id="wall">
       <div class="section-head inline-head">
-        <h2>贡献者墙</h2>
-        <a href="#wall" class="text-link">全部贡献者</a>
+        <div class="section-title">
+          <h2>贡献者墙</h2>
+          <p class="wall-summary" id="wallSummary">等待贡献者数据</p>
+        </div>
+        <button class="text-link wall-toggle" id="toggleWallMode" type="button" aria-expanded="false" aria-controls="wallControls">全部贡献者</button>
+      </div>
+      <div class="wall-controls" id="wallControls" hidden>
+        <label class="wall-search" for="wallSearch">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-5.2-5.2" /><circle cx="10.8" cy="10.8" r="6.8" /></svg>
+          <span class="sr-only">搜索贡献者</span>
+          <input id="wallSearch" type="search" placeholder="搜索名字、GitHub、标签或城市" autocomplete="off" />
+        </label>
+        <div class="wall-filter-row">
+          <span id="wallFilterStatus">显示贡献者</span>
+          <button class="wall-clear-search" id="clearWallSearch" type="button" hidden>清空搜索</button>
+        </div>
       </div>
       <div class="wall" id="contributorsWall"></div>
+      <div class="wall-load-row">
+        <button class="load-more-wall" id="loadMoreWall" type="button" hidden>加载更多</button>
+      </div>
     </section>
 
     <section class="steps" id="guide">
