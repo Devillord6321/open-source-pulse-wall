@@ -11,8 +11,9 @@ const PROFILES_DIR = path.join(ROOT, 'data', 'profiles');
 const GITHUB_API_BASE = 'https://api.github.com';
 const COMMIT_GRAPH_LIMIT = 40;
 const ACTIVITY_FEED_LIMIT = 8;
-const ISSUES_FETCH_LIMIT = 30;
-const PULLS_FETCH_LIMIT = 20;
+const CONTRIBUTORS_FETCH_LIMIT = 100;
+const ISSUES_FETCH_LIMIT = 100;
+const PULLS_FETCH_LIMIT = 100;
 const ISSUES_DISPLAY_LIMIT = 10;
 const PULLS_DISPLAY_LIMIT = 10;
 
@@ -252,7 +253,7 @@ function assertGithubRepository(value) {
   }
 }
 
-async function fetchGithubJson(pathname, token = '') {
+async function fetchGithubJsonWithHeaders(pathname, token = '') {
   const response = await fetch(`${GITHUB_API_BASE}${pathname}`, {
     headers: buildGithubHeaders(token)
   });
@@ -262,7 +263,59 @@ async function fetchGithubJson(pathname, token = '') {
     throw new Error(`GitHub API ${response.status}: ${body.slice(0, 240)}`);
   }
 
-  return response.json();
+  return {
+    data: await response.json(),
+    link: response.headers?.get('link') || ''
+  };
+}
+
+async function fetchGithubJson(pathname, token = '') {
+  const result = await fetchGithubJsonWithHeaders(pathname, token);
+  return result.data;
+}
+
+function parseNextPagePath(linkHeader) {
+  if (!linkHeader) return '';
+
+  const nextLink = String(linkHeader)
+    .split(',')
+    .map((entry) => entry.trim())
+    .find((entry) => /;\s*rel="next"/.test(entry));
+
+  if (!nextLink) return '';
+
+  const match = /^<([^>]+)>/.exec(nextLink);
+  if (!match) return '';
+
+  try {
+    const parsed = new URL(match[1], GITHUB_API_BASE);
+    return `${parsed.pathname}${parsed.search}`;
+  } catch {
+    return '';
+  }
+}
+
+async function fetchGithubCollection(pathname, token = '', { maxItems = 100 } = {}) {
+  const items = [];
+  let nextPath = pathname;
+  let truncated = false;
+
+  while (nextPath) {
+    const result = await fetchGithubJsonWithHeaders(nextPath, token);
+    const pageItems = Array.isArray(result.data) ? result.data : [];
+    items.push(...pageItems);
+    nextPath = parseNextPagePath(result.link);
+
+    if (items.length >= maxItems) {
+      truncated = Boolean(nextPath);
+      break;
+    }
+  }
+
+  return {
+    data: items.slice(0, maxItems),
+    truncated
+  };
 }
 
 function pickCommitTime(commit) {
@@ -410,12 +463,12 @@ function buildActivityEvents({ commits, issues, pullRequests }) {
   return events;
 }
 
-async function fetchOptionalCollection(pathname, token) {
+async function fetchOptionalCollection(pathname, token, options = {}) {
   try {
-    const data = await fetchGithubJson(pathname, token);
-    return { data: Array.isArray(data) ? data : [], warning: '' };
+    const result = await fetchGithubCollection(pathname, token, options);
+    return { data: result.data, truncated: result.truncated, warning: '' };
   } catch (error) {
-    return { data: [], warning: error.message };
+    return { data: [], truncated: false, warning: error.message };
   }
 }
 
@@ -423,20 +476,26 @@ async function fetchGithubState({ repository, token = '' }) {
   assertGithubRepository(repository);
 
   const encodedRepo = repository.split('/').map(encodeURIComponent).join('/');
-  const [repo, contributors, commits] = await Promise.all([
+  const [repo, contributorsResult, commits] = await Promise.all([
     fetchGithubJson(`/repos/${encodedRepo}`, token),
-    fetchGithubJson(`/repos/${encodedRepo}/contributors?per_page=100`, token),
+    fetchGithubCollection(
+      `/repos/${encodedRepo}/contributors?per_page=100`,
+      token,
+      { maxItems: CONTRIBUTORS_FETCH_LIMIT }
+    ),
     fetchGithubJson(`/repos/${encodedRepo}/commits?per_page=${COMMIT_GRAPH_LIMIT}`, token)
   ]);
 
   const [issuesResult, pullsResult] = await Promise.all([
     fetchOptionalCollection(
-      `/repos/${encodedRepo}/issues?state=all&sort=created&direction=desc&per_page=${ISSUES_FETCH_LIMIT}`,
-      token
+      `/repos/${encodedRepo}/issues?state=all&sort=created&direction=desc&per_page=100`,
+      token,
+      { maxItems: ISSUES_FETCH_LIMIT }
     ),
     fetchOptionalCollection(
-      `/repos/${encodedRepo}/pulls?state=open&sort=created&direction=desc&per_page=${PULLS_FETCH_LIMIT}`,
-      token
+      `/repos/${encodedRepo}/pulls?state=open&sort=created&direction=desc&per_page=100`,
+      token,
+      { maxItems: PULLS_FETCH_LIMIT }
     )
   ]);
 
@@ -459,7 +518,8 @@ async function fetchGithubState({ repository, token = '' }) {
     ok: true,
     repository: repo.full_name || repository,
     stars: Number(repo.stargazers_count || 0),
-    contributorCount: Array.isArray(contributors) ? contributors.length : 0,
+    contributorCount: contributorsResult.data.length,
+    contributorCountTruncated: contributorsResult.truncated,
     cloneUrl: repo.clone_url || '',
     htmlUrl: repo.html_url || '',
     pushedAt: repo.pushed_at || '',
@@ -472,8 +532,16 @@ async function fetchGithubState({ repository, token = '' }) {
     openIssuesTotal,
     pullRequestsTotal: pullNodes.length,
     awaitingReviewTotal,
-    issuesWarning: issuesResult.warning,
-    pullsWarning: pullsResult.warning,
+    issuesTotalTruncated: issuesResult.truncated,
+    pullRequestsTotalTruncated: pullsResult.truncated,
+    issuesWarning: [
+      issuesResult.warning,
+      issuesResult.truncated ? `Issue 数据超过 ${ISSUES_FETCH_LIMIT} 条，仅展示前 ${ISSUES_FETCH_LIMIT} 条` : ''
+    ].filter(Boolean).join('；'),
+    pullsWarning: [
+      pullsResult.warning,
+      pullsResult.truncated ? `PR 数据超过 ${PULLS_FETCH_LIMIT} 条，仅展示前 ${PULLS_FETCH_LIMIT} 条` : ''
+    ].filter(Boolean).join('；'),
     message: `已同步 GitHub 仓库 ${repo.full_name || repository}`
   };
 }
@@ -562,8 +630,8 @@ function buildContributorState({ githubState = buildUnconfiguredGithubState(), f
   const normalized = normalizeContributors(result.contributors);
   const ok = result.errors.length === 0;
   const contributors = ok ? normalized : fallbackContributors;
-  const cheersTotal = normalized.reduce((sum, profile) => sum + profile.cheers.length, 0);
-  const recentCheers = collectRecentCheers(normalized);
+  const cheersTotal = contributors.reduce((sum, profile) => sum + profile.cheers.length, 0);
+  const recentCheers = collectRecentCheers(contributors);
 
   return {
     ok,

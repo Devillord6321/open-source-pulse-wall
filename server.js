@@ -14,16 +14,21 @@ const {
   resolveGithubRepository
 } = require('./scripts/state-builder');
 const { syncLocalGitRepo } = require('./scripts/git-sync');
+const { resolveStaticPath } = require('./scripts/static-path');
 
 const PORT = Number(process.env.PORT || 3008);
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const POLL_INTERVAL_MS = 700;
-// Treat GitHub remote as the backend: poll every 30s so freshly merged PRs appear quickly.
-// 30s * 3 requests = 360 req/h, well within the 5000 req/h authenticated GitHub API budget.
-const GITHUB_SYNC_INTERVAL_MS = Number(process.env.GITHUB_SYNC_INTERVAL_MS || 30000);
-const MANUAL_REFRESH_COOLDOWN_MS = 5000;
 const GITHUB_TOKEN = String(process.env.GITHUB_TOKEN || '').trim();
+const AUTHENTICATED_GITHUB_SYNC_INTERVAL_MS = 30000;
+const UNAUTHENTICATED_GITHUB_SYNC_INTERVAL_MS = 300000;
+// Authenticated sync can poll quickly; unauthenticated REST calls are limited to 60 req/h.
+const GITHUB_SYNC_INTERVAL_MS = Number(
+  process.env.GITHUB_SYNC_INTERVAL_MS ||
+    (GITHUB_TOKEN ? AUTHENTICATED_GITHUB_SYNC_INTERVAL_MS : UNAUTHENTICATED_GITHUB_SYNC_INTERVAL_MS)
+);
+const MANUAL_REFRESH_COOLDOWN_MS = 5000;
 
 const clients = new Set();
 let lastGoodContributors = [];
@@ -137,16 +142,7 @@ function broadcast(event, payload) {
 }
 
 function safeStaticPath(urlPath) {
-  const cleanUrl = urlPath.split('?')[0].split('#')[0];
-  const requested = cleanUrl === '/' ? '/index.html' : cleanUrl;
-  const decoded = decodeURIComponent(requested);
-  const fullPath = path.normalize(path.join(PUBLIC_DIR, decoded));
-
-  if (!fullPath.startsWith(PUBLIC_DIR)) {
-    return null;
-  }
-
-  return fullPath;
+  return resolveStaticPath(urlPath, PUBLIC_DIR);
 }
 
 function contentType(filePath) {

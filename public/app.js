@@ -211,6 +211,11 @@ function formatNumber(value) {
   return Number(value).toLocaleString('zh-CN');
 }
 
+function formatCount(value, truncated = false) {
+  const formatted = formatNumber(value);
+  return truncated && formatted !== '--' ? `${formatted}+` : formatted;
+}
+
 function setConnection(status, text) {
   if (!elements.connectionDot || !elements.connectionText) return;
 
@@ -261,6 +266,18 @@ function updateGithubSync(github) {
 
 function githubProfileUrl(github) {
   return `https://github.com/${encodeURIComponent(github || '')}`;
+}
+
+function safeHttpUrl(value) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return '';
+
+  try {
+    const url = new URL(trimmed);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : '';
+  } catch {
+    return '';
+  }
 }
 
 function avatarForProfile(profile) {
@@ -346,7 +363,7 @@ function cardMarkup(profile, options = {}) {
     ? stack.map((tag) => `<span>${htmlEscape(tag)}</span>`).join('')
     : '<span>Git</span><span>Open Source</span>';
   const file = htmlEscape(profile.file || `${String(profile.github || 'your-github-id').toLowerCase()}.json`);
-  const homepage = profile.homepage || (profile.github ? githubProfileUrl(profile.github) : '');
+  const homepage = safeHttpUrl(profile.homepage) || (profile.github ? githubProfileUrl(profile.github) : '');
   const footerLink = homepage
     ? `<a href="${htmlEscape(homepage)}" target="_blank" rel="noreferrer">GitHub</a>`
     : '<span>GitHub</span>';
@@ -411,7 +428,7 @@ function updateStats(payload) {
 
   if (elements.statIssues) {
     const total = Number(github.issuesTotal ?? 0);
-    elements.statIssues.textContent = github.configured ? formatNumber(total) : '--';
+    elements.statIssues.textContent = github.configured ? formatCount(total, github.issuesTotalTruncated) : '--';
   }
   if (elements.statIssuesNote) {
     if (!github.configured) {
@@ -419,8 +436,9 @@ function updateStats(payload) {
     } else {
       const open = Number(github.openIssuesTotal ?? 0);
       const total = Number(github.issuesTotal ?? 0);
+      const truncated = Boolean(github.issuesTotalTruncated);
       elements.statIssuesNote.textContent = total > 0
-        ? `${open} 个 open · ${total - open} 个 closed`
+        ? (truncated ? `${open} 个 open · 已取 ${total} 个` : `${open} 个 open · ${total - open} 个 closed`)
         : '等同学提第一个 Issue';
     }
   }
@@ -434,10 +452,11 @@ function updateStats(payload) {
     } else {
       const open = Number(github.pullRequestsTotal ?? 0);
       const awaiting = Number(github.awaitingReviewTotal ?? 0);
+      const openCount = formatCount(open, github.pullRequestsTotalTruncated);
       if (awaiting > 0) {
-        elements.statReviewNote.textContent = `共 ${open} 个 open PR`;
+        elements.statReviewNote.textContent = `共 ${openCount} 个 open PR`;
       } else if (open > 0) {
-        elements.statReviewNote.textContent = `${open} 个 open PR · 暂无人请 review`;
+        elements.statReviewNote.textContent = `${openCount} 个 open PR · 暂无人请 review`;
       } else {
         elements.statReviewNote.textContent = '没有进行中的 PR';
       }
@@ -1180,7 +1199,7 @@ function updateBoardSection(payload) {
       const openIssues = Number(github.openIssuesTotal ?? 0);
       const awaiting = Number(github.awaitingReviewTotal ?? 0);
       const pullsTotal = Number(github.pullRequestsTotal ?? 0);
-      elements.boardSummary.textContent = `Issue ${openIssues} open / ${issuesTotal} 累计 · PR ${awaiting} 等 review / ${pullsTotal} open`;
+      elements.boardSummary.textContent = `Issue ${openIssues} open / ${formatCount(issuesTotal, github.issuesTotalTruncated)} 累计 · PR ${awaiting} 等 review / ${formatCount(pullsTotal, github.pullRequestsTotalTruncated)} open`;
     }
   }
 

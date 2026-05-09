@@ -6,6 +6,7 @@
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",
+    "test": "node --test",
     "validate": "node scripts/validate-contributors.js",
     "build:pages": "node scripts/build-static-site.js",
     "dev": "node server.js"

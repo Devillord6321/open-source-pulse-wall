@@ -19,10 +19,10 @@ jobs:
     if: ${{ github.event.pull_request.draft == false }}
     steps:
       - name: Checkout base branch profiles
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Pick a random classmate and post a review request
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
             const fs = require('fs');
@@ -31,6 +31,25 @@ jobs:
             const profilesDir = path.join(process.env.GITHUB_WORKSPACE, 'data', 'profiles');
             const pr = context.payload.pull_request;
             const author = String(pr.user.login || '').toLowerCase();
+            const marker = '<!-- open-source-pulse-wall:auto-peer-reviewer -->';
+
+            const labels = new Set((pr.labels || []).map((label) => String(label.name || '').toLowerCase()));
+            if (labels.has('peer-review-suggested')) {
+              core.info('Peer reviewer was already suggested on this PR.');
+              return;
+            }
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              per_page: 100
+            });
+
+            if (comments.some((comment) => String(comment.body || '').includes(marker))) {
+              core.info('Existing auto peer-reviewer comment found; skipping duplicate comment.');
+              return;
+            }
 
             let peers = [];
             try {
@@ -62,6 +81,7 @@ jobs:
             const picked = eligible[Math.floor(Math.random() * eligible.length)];
 
             const body = [
+              marker,
               `:wave: 课堂自动指派同学互评：@${picked}`,
               ``,
               `麻烦帮 @${pr.user.login} 看一下这个 PR，留一条 review 评论或者一句 LGTM 就算完成今天的同学互评任务。`,
