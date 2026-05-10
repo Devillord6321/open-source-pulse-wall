@@ -12,5 +12,12 @@
   "city": "深圳",
   "style": "sketch",
   "avatar": "avatars/avatar-04.png",
-  "homepage": ""
+  "homepage": "",
+  "cheers": [
+    {
+      "from": "Devillord6321",
+      "message": "炀神nb",
+      "ts": "2026-05-10"
+    }
+  ]
 }
